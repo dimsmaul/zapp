@@ -155,7 +155,7 @@ async function publish() {
     status('Preparing upload…')
     const targets = await api(account, '/api/v1/captures/upload-sessions', {
       method: 'POST', idempotencyKey: draft.uploadKey,
-      body: { attachmentType: draft.type, captureContentType: draft.blob.type, hasDebuggerPayload: Boolean(draft.events.length), title, visibility: 'private' },
+      body: { attachmentType: draft.type, captureContentType: draft.blob.type, hasDebuggerPayload: Boolean(draft.events.length), title },
     })
     if (!targets.bugReportId) throw new Error('The server did not return a capture ID.')
     await persist({ reportId: targets.bugReportId })
