@@ -1,19 +1,23 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, getRouteApi, useLocation } from "@tanstack/react-router";
-import { Check, ChevronDown, Globe, Home, LayoutGrid, Link2, LocateFixed, Lock, Search } from "lucide-react";
+import { Check, ChevronDown, Home, LayoutGrid, Link2, LocateFixed, Search, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isActive, useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
+import { timeAgo } from "@/lib/time";
 import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, getNetworkRequest, getReport, listEvents, updateVisibility } from "./api";
 import { type EventRow, EventTable } from "./event-table";
+import { Comments } from "./comments";
 import { NetworkInspector } from "./network-inspector";
+import { ShareDialog } from "./share-dialog";
+import { visibilityOptions } from "./visibility";
 import { type NetworkRow, NetworkTable } from "./network-table";
 import { ReportPlayer, seekVideo } from "./player";
 
@@ -39,19 +43,6 @@ function describe(event: TimelineEvent) {
 function isNetworkError(event: TimelineEvent) {
   const status = event.data?.status ?? event.data?.statusCode;
   return event.category === "network" && (event.data?.failed === true || (typeof status === "number" && status >= 400));
-}
-
-const relativeUnits: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["year", 31_536_000], ["month", 2_592_000], ["day", 86_400], ["hour", 3600], ["minute", 60],
-];
-
-function timeAgo(value: string) {
-  const seconds = (new Date(value).getTime() - Date.now()) / 1000;
-  const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  for (const [unit, size] of relativeUnits) {
-    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
 }
 
 const typeChips = [
@@ -162,6 +153,7 @@ export function SharePage() {
   const [follow, setFollow] = useState(false);
   const [playbackMs, setPlaybackMs] = useState(0);
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
+  const [sharing, setSharing] = useState(false);
   const queryClient = useQueryClient();
   const setVisibility = useMutation({
     mutationFn: (value: Visibility) => updateVisibility(token!, id, value),
@@ -290,7 +282,7 @@ export function SharePage() {
     );
   }
 
-  const { title, description, attachmentType, attachmentUrl, createdAt, reporter, visibility, canManage } = report.data;
+  const { title, description, attachmentType, attachmentUrl, createdAt, reporter, visibility, canManage, workspaceId } = report.data;
 
   async function copyLink() {
     try {
@@ -302,7 +294,9 @@ export function SharePage() {
   }
 
   return (
-    <main className="grid min-h-svh bg-background lg:h-svh lg:grid-cols-[minmax(0,3fr)_minmax(23rem,2fr)]">
+    // Same inset card as the signed-in layout (shadcn's sidebar "inset" look), just without a sidebar.
+    <div className="min-h-svh bg-sidebar p-2 lg:h-svh">
+    <main className="grid min-h-[calc(100svh-1rem)] overflow-hidden rounded-xl bg-background shadow-sm lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,3fr)_minmax(23rem,2fr)]">
       <section className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] lg:min-h-0" aria-label="Report recording">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
@@ -321,16 +315,15 @@ export function SharePage() {
                 <DropdownMenuTrigger asChild>
                   <Button size="icon" aria-label="Change who can view" className="rounded-l-none border-l border-primary-foreground/25"><ChevronDown /></Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuLabel>General access</DropdownMenuLabel>
                   <DropdownMenuRadioGroup value={visibility ?? "private"} onValueChange={(value) => setVisibility.mutate(value as Visibility)}>
-                    <DropdownMenuRadioItem value="private" className="items-start">
-                      <Lock className="mt-0.5" /><span className="grid"><span>Private</span><span className="text-xs text-muted-foreground">Only workspace members can open it</span></span>
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="public" className="items-start">
-                      <Globe className="mt-0.5" /><span className="grid"><span>Public</span><span className="text-xs text-muted-foreground">Anyone with the link can open it</span></span>
-                    </DropdownMenuRadioItem>
+                    {visibilityOptions.map(({ value, label, Icon }) => (
+                      <DropdownMenuRadioItem key={value} value={value}><Icon />{label}</DropdownMenuRadioItem>
+                    ))}
                   </DropdownMenuRadioGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setSharing(true)}><Settings />Share settings</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -368,6 +361,13 @@ export function SharePage() {
                 created this report · <time dateTime={createdAt} title={new Date(createdAt).toLocaleString()}>{timeAgo(createdAt)}</time>
               </p>
             </article>
+            {token && workspaceId && (
+              <Comments
+                reportId={id} token={token} workspaceId={workspaceId}
+                video={video} isVideo={attachmentType === "video"}
+                onSeek={(seconds) => seekVideo(video.current, seconds)}
+              />
+            )}
         </div>
         </section>
         <aside className="relative grid min-w-0 grid-rows-[auto_minmax(0,1fr)] border-t lg:min-h-0 lg:border-l lg:border-t-0" aria-label="Report diagnostics">
@@ -458,5 +458,18 @@ export function SharePage() {
           )}
         </aside>
     </main>
+    {canManage && token && workspaceId && (
+      <ShareDialog
+        open={sharing}
+        onOpenChange={setSharing}
+        reportId={id}
+        title={title}
+        token={token}
+        workspaceId={workspaceId}
+        visibility={visibility ?? "private"}
+        onVisibility={(value) => setVisibility.mutate(value)}
+      />
+    )}
+    </div>
   );
 }

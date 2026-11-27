@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Camera, Globe, Lock, Play, Plus, Search, Video } from "lucide-react";
+import { Camera, Play, Plus, Search, Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api";
 import { type ReportSummary, type Visibility, listReports, updateVisibility } from "./api";
+import { visibilityOption, visibilityOptions } from "./visibility";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -25,7 +26,7 @@ function ReportCard({ report, onVisibility }: { report: ReportSummary; onVisibil
       <div className="grid gap-0.5 px-1">
         <span className="truncate font-medium">{report.title || "Untitled"}</span>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {report.visibility === "public" ? <Globe size={12} aria-label="Public" /> : <Lock size={12} aria-label="Private" />}
+          {(() => { const { Icon, label } = visibilityOption(report.visibility); return <Icon size={12} aria-label={label} />; })()}
           {report.createdAt && dateFormat.format(new Date(report.createdAt))}
         </span>
       </div>
@@ -38,8 +39,9 @@ function ReportCard({ report, onVisibility }: { report: ReportSummary; onVisibil
       <ContextMenuContent>
         <ContextMenuLabel>Who can view</ContextMenuLabel>
         <ContextMenuRadioGroup value={report.visibility} onValueChange={(value) => onVisibility(value as Visibility)}>
-          <ContextMenuRadioItem value="private"><Lock />Private</ContextMenuRadioItem>
-          <ContextMenuRadioItem value="public"><Globe />Public</ContextMenuRadioItem>
+          {visibilityOptions.map(({ value, label, Icon }) => (
+            <ContextMenuRadioItem key={value} value={value}><Icon />{label}</ContextMenuRadioItem>
+          ))}
         </ContextMenuRadioGroup>
       </ContextMenuContent>
     </ContextMenu>
@@ -172,8 +174,7 @@ export function ReportsPage() {
                 <SelectTrigger aria-label="Filter by access"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Any access</SelectItem>
-                  <SelectItem value="public">Public</SelectItem>
-                  <SelectItem value="private">Private</SelectItem>
+                  {visibilityOptions.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                 </SelectContent>
               </Select>
               {filtering && <Button variant="ghost" onClick={() => { setSearch(""); setType("all"); setAccess("all"); }}>Clear</Button>}
