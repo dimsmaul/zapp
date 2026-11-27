@@ -93,20 +93,24 @@ function status(session) {
   }
 }
 
-async function start() {
+// area "desktop": the popup already got a stream id from Chrome's share dialog (tab, window or screen).
+// Console and network logs still come from the tab that was active when recording started.
+async function start({ area, streamId: sharedStreamId } = {}) {
   if (starting || recording) throw new Error('A tab recording is already in progress.')
   starting = true
   try {
+    const desktop = area === 'desktop'
+    if (desktop && !sharedStreamId) throw new Error('Choose what to share first.')
     const tab = await activeTab()
     const { preferredTab } = await chrome.storage.session.get('preferredTab')
-    if (preferredTab && tab.id !== preferredTab) throw new Error('Open Zapp from the selected tab to start recording.')
+    if (!desktop && preferredTab && tab.id !== preferredTab) throw new Error('Open Zapp from the selected tab to start recording.')
     const draft = await makeDraft('video', tab)
     await hidePanel(tab.id) // keep the panel out of the recording
     await openRecorder()
-    const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id })
-    const startedAt = await recorder('start', { streamId, draft })
+    const streamId = desktop ? sharedStreamId : await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id })
+    const startedAt = await recorder('start', { streamId, draft, source: desktop ? 'desktop' : 'tab' })
     const session = {
-      draft, tabId: tab.id, startedAt, pausedAt: 0, pausedTotal: 0,
+      draft, tabId: tab.id, startedAt, desktop, pausedAt: 0, pausedTotal: 0,
       events: [], eventBytes: 0, warnings: [], requests: new Map(), pendingEvents: new Set(), bodyReads: 0,
       elapsed() { return Math.max(0, (this.pausedAt || Date.now()) - this.startedAt - this.pausedTotal) },
     }
@@ -259,6 +263,14 @@ async function handle(message, sender) {
     await chrome.storage.session.remove(key)
     return true
   }
+  if (message.type === 'open-panel') {
+    // Sent by web-bridge.js when the Zapp website's "New Zapp" button is pressed.
+    if (!sender.tab || sender.frameId !== 0 || !sender.url) throw new Error('Unrecognized connection.')
+    const { webOrigin } = await chrome.storage.local.get('webOrigin')
+    if (!webOrigin || new URL(sender.url).origin !== webOrigin) throw new Error('This site is not connected to Zapp.')
+    await openPanel(sender.tab)
+    return true
+  }
   if (sender.tab && sender.frameId === 0 && !sender.url?.startsWith(extensionOrigin)) {
     if (!recording || sender.tab.id !== recording.tabId || message.id !== recording.draft.id) return
     if (message.type === 'page-event') return pageEvent(recording, message.data)
@@ -275,7 +287,7 @@ async function handle(message, sender) {
     case 'state': return recording ? status(recording) : null
     case 'select-tab': return switchTab(message.tabId)
     case 'clear-tab': return clearTab()
-    case 'start': return start()
+    case 'start': return start(message)
     case 'screenshot': return screenshot()
     case 'toggle-pause': return changePause()
     case 'stop': return stop()
@@ -316,7 +328,8 @@ chrome.tabs.onUpdated.addListener((id, change) => {
 })
 
 chrome.tabs.onRemoved.addListener((id) => {
-  if (recording?.tabId === id) void stop()?.catch(() => {})
+  // A desktop recording keeps going when the tab that supplies the logs closes.
+  if (recording?.tabId === id && !recording.desktop) void stop()?.catch(() => {})
   void chrome.storage.session.remove([`preview:${id}`, `panel:${id}`]).catch(() => {})
   void chrome.storage.session.get('preferredTab').then(({ preferredTab }) => {
     if (preferredTab === id) return chrome.storage.session.remove('preferredTab')

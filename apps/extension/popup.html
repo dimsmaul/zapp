@@ -22,12 +22,11 @@
         <button type="submit" class="primary">Continue</button>
       </form>
 
-      <form id="login" class="stack" hidden>
+      <section id="login" class="stack" hidden>
         <div><h2>Sign in</h2><p id="server" class="muted ellipsis"></p></div>
-        <label>Email<input name="email" type="email" autocomplete="username" required></label>
-        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-        <button type="submit" class="primary">Sign in</button>
-      </form>
+        <p class="muted">Finish signing in on the Zapp page that just opened. This panel updates when you are done.</p>
+        <button id="open-login" type="button" class="primary">Open sign-in page</button>
+      </section>
 
       <form id="workspace" class="stack" hidden>
         <div><h2>Choose a workspace</h2><p id="workspace-hint" class="muted">Captures will be saved here.</p></div>
@@ -37,9 +36,16 @@
 
       <section id="capture" class="stack" hidden>
         <div class="target"><span class="label">Capture target</span><p id="selection" class="ellipsis"></p></div>
+        <div class="row record-area">
+          <span class="label">Record area</span>
+          <div class="segment" role="group" aria-label="Record area">
+            <button id="area-tab" type="button" aria-pressed="true">Tab</button>
+            <button id="area-desktop" type="button" aria-pressed="false">Desktop</button>
+          </div>
+        </div>
         <div class="actions">
           <button id="screenshot" class="action-card" type="button"><span data-icon="camera"></span>Screenshot</button>
-          <button id="record" class="action-card primary" type="button"><span data-icon="video"></span>Record tab</button>
+          <button id="record" class="action-card primary" type="button"><span data-icon="video"></span><span id="record-label">Record tab</span></button>
         </div>
         <button id="show-tabs" class="quiet small" type="button" aria-controls="tab-picker" aria-expanded="false">Choose another tab</button>
         <form id="tab-picker" class="stack inset" hidden>

@@ -55,8 +55,8 @@
           </div>
           <div class="panel-body">
             <input id="title" name="title" class="title-input" placeholder="Title" aria-label="Title" maxlength="180" required autocomplete="off">
+            <progress id="upload-progress" class="upload-progress" max="1" value="0" hidden aria-label="Upload progress"></progress>
             <textarea id="description" name="description" class="description-input" placeholder="Add a description…" aria-label="Description" rows="6" maxlength="12000"></textarea>
-            <button id="grant" type="button" hidden>Allow upload to storage</button>
             <div id="share" class="stack share" hidden>
               <label>Share link<input id="link" type="url" readonly></label>
               <div class="row"><button id="copy" type="button">Copy link</button><a id="open-report" target="_blank" rel="noopener noreferrer">Open report</a></div>

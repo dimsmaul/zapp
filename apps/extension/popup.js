@@ -77,11 +77,36 @@ function act(element, event, callback) {
   })
 }
 
-function showLogin() {
+// Sign-in happens on the Zapp website, not in the extension. The website sends the browser back to
+// auth.html with a session; auth.js stores it and this panel notices through storage.onChanged.
+function showLogin({ open = false } = {}) {
   $('server').textContent = account.origin
-  $('login').reset()
   show('login')
+  if (open) void openLogin().catch((error) => status(error.message, true))
 }
+
+async function openLogin() {
+  const { login } = await chrome.storage.session.get('login')
+  if (login?.origin === account.origin && login.expiresAt > Date.now() && login.tabId) {
+    // A sign-in tab is already open: bring it forward instead of opening another one.
+    if (await chrome.tabs.update(login.tabId, { active: true }).catch(() => null)) return
+  }
+  const { webOrigin } = await api({ origin: account.origin }, '/api/v1/config')
+  const web = serverOrigin(webOrigin, { originOnly: true })
+  const state = crypto.randomUUID()
+  const expiresAt = Date.now() + 10 * 60_000
+  await chrome.storage.session.set({ login: { state, origin: account.origin, expiresAt } })
+  const query = new URLSearchParams({ ref: 'extension', ext: chrome.runtime.id, state })
+  const tab = await chrome.tabs.create({ url: `${web}/login?${query}` })
+  await chrome.storage.session.set({ login: { state, origin: account.origin, expiresAt, tabId: tab.id } })
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  const next = changes.account?.newValue
+  if (area !== 'local' || !next?.token || $('login').hidden) return
+  account = next
+  void (account.workspaceId ? showCapture() : showWorkspace()).catch((error) => status(error.message, true))
+})
 
 async function showWorkspace() {
   const { items } = await api(account, '/api/v1/workspaces')
@@ -124,35 +149,30 @@ async function init() {
   $('drafts').textContent = drafts.length === 1 ? 'Open draft' : `Open drafts (${drafts.length})`
   if (state) return showRecording(state)
   if (!account?.origin) return show('connect')
-  if (!account.token || Date.parse(account.expiresAt) <= Date.now()) return showLogin()
+  if (!account.token || Date.parse(account.expiresAt) <= Date.now()) return showLogin({ open: true })
   if (!account.workspaceId) return showWorkspace()
   return showCapture()
 }
 
 act($('connect'), 'submit', async () => {
   const origin = serverOrigin($('connect').elements.origin.value, { originOnly: true })
-  if (!await chrome.permissions.request({ origins: [hostPattern(origin)] })) {
+  // The config call is public, so it can run before the permission prompt. One prompt then covers the
+  // server and the website that serves its sign-in page.
+  const web = serverOrigin((await api({ origin }, '/api/v1/config')).webOrigin, { originOnly: true })
+  if (!await chrome.permissions.request({ origins: [...new Set([hostPattern(origin), hostPattern(web)])] })) {
     throw new Error('Allow access to this server to continue.')
   }
+  // Lets the website's "New Zapp" button open this extension.
+  await chrome.scripting.unregisterContentScripts({ ids: ['zapp-web'] }).catch(() => {})
+  await chrome.scripting.registerContentScripts([{
+    id: 'zapp-web', matches: [hostPattern(web)], js: ['web-bridge.js'], runAt: 'document_start', persistAcrossSessions: true,
+  }])
+  await chrome.storage.local.set({ webOrigin: web })
   await commit({ origin })
-  showLogin()
+  showLogin({ open: true })
 })
 
-act($('login'), 'submit', async () => {
-  const form = $('login')
-  const body = { email: form.elements.email.value.trim(), password: form.elements.password.value }
-  form.elements.password.value = ''
-  const result = await api({ origin: account.origin }, '/api/v1/auth/login', { method: 'POST', body })
-  if (!result.token || !result.user?.id || !Number.isFinite(Date.parse(result.expiresAt))) {
-    throw new Error('The server returned an invalid login response.')
-  }
-  await commit({
-    origin: account.origin, token: result.token, expiresAt: result.expiresAt,
-    userId: result.user.id, workspaceId: result.workspaceId,
-  })
-  if (account.workspaceId) await showCapture()
-  else await showWorkspace()
-})
+act($('open-login'), 'click', openLogin)
 
 act($('workspace'), 'submit', async () => {
   const workspaceId = $('workspace').elements.id.value
@@ -164,7 +184,8 @@ act($('workspace'), 'submit', async () => {
 act($('change-server'), 'click', async () => {
   const previous = account
   if (previous?.token) await api(previous, '/api/v1/auth/logout', { method: 'POST' }).catch(() => {})
-  await chrome.storage.local.remove('account')
+  await chrome.storage.local.remove(['account', 'webOrigin'])
+  await chrome.scripting.unregisterContentScripts({ ids: ['zapp-web'] }).catch(() => {})
   await send('clear-tab')
   account = undefined
   $('connect').elements.origin.value = previous?.origin ?? ''
@@ -179,8 +200,49 @@ act($('logout'), 'click', async () => {
 
 act($('switch-workspace'), 'click', showWorkspace)
 act($('screenshot'), 'click', async () => { await send('screenshot'); closePanel() })
+// In the in-page panel, the page overlay shows a 3-2-1 circle in the middle of the screen first.
+// Clicking the circle (or pressing Escape) cancels. The popup window fallback starts at once.
+function countdown() {
+  return new Promise((resolve) => {
+    const onMessage = (event) => {
+      if (event.source !== parent || !['zapp-countdown-done', 'zapp-countdown-cancel'].includes(event.data)) return
+      removeEventListener('message', onMessage)
+      resolve(event.data === 'zapp-countdown-done')
+    }
+    addEventListener('message', onMessage)
+    parent.postMessage('zapp-countdown', '*')
+  })
+}
+// Record area: "Tab" records the active tab with tabCapture. "Desktop" opens Chrome's share dialog so the
+// user can share the active tab, a window or the whole screen, and the recording follows what is shared.
+let area = 'tab'
+function setArea(next) {
+  area = next
+  $('area-tab').setAttribute('aria-pressed', String(area === 'tab'))
+  $('area-desktop').setAttribute('aria-pressed', String(area === 'desktop'))
+  $('record-label').textContent = area === 'desktop' ? 'Record desktop' : 'Record tab'
+  $('show-tabs').hidden = area === 'desktop'
+  if (area === 'desktop') $('tab-picker').hidden = true
+}
+for (const next of ['tab', 'desktop']) {
+  $(`area-${next}`).addEventListener('click', () => {
+    setArea(next)
+    void chrome.storage.local.set({ recordArea: next })
+  })
+}
+void chrome.storage.local.get('recordArea').then(({ recordArea }) => setArea(recordArea === 'desktop' ? 'desktop' : 'tab'))
+
+function chooseScreen() {
+  return new Promise((resolve) => {
+    chrome.desktopCapture.chooseDesktopMedia(['tab', 'window', 'screen'], (streamId) => resolve(streamId || ''))
+  })
+}
+
 act($('record'), 'click', async () => {
-  await send('start')
+  const streamId = area === 'desktop' ? await chooseScreen() : undefined
+  if (area === 'desktop' && !streamId) return // the share dialog was cancelled
+  if (embedded && !await countdown()) return
+  await send('start', { area, streamId })
   closePanel()
 })
 act($('pause'), 'click', async () => {

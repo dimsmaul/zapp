@@ -12,7 +12,7 @@ Zapp is self-hostable. The extension sends data only to the Zapp server address 
 
 Only when you start a capture (screenshot or recording) on a tab:
 
-- **Screen content** of the captured tab: a screenshot, or a video with tab audio if you record.
+- **Screen content** of what you choose to capture: a screenshot of the tab, or a video of the tab, a window or your screen if you record. Anything visible in the shared area is recorded.
 - **Console output** of that tab (logs, warnings, errors).
 - **Network activity** of that tab: request URLs, methods, status codes, timings and headers/bodies where available. Values that look like credentials (authorization, cookie, password, token, secret, API key) are redacted before upload.
 - **Page details**: the tab's URL and title, and basic environment information such as browser and screen size.
@@ -27,7 +27,7 @@ The extension does not capture anything in the background. Nothing is collected 
 
 ## What is sent, and when
 
-A capture is sent to your Zapp server only after you review it and press **Create**. Sign-in requests (email and password) go to the same server. The extension talks to no other server.
+A capture is sent to your Zapp server only after you review it and press **Create**. You sign in on your Zapp website, never inside the extension, so the extension never sees your password. After you sign in, the website gives the extension a session token. The extension talks to no server other than the one you configure.
 
 ## What we do not do
 
@@ -41,6 +41,7 @@ A capture is sent to your Zapp server only after you review it and press **Creat
 | Permission | Why |
 |---|---|
 | `tabCapture`, `offscreen` | Record the tab you choose |
+| `desktopCapture` | Show Chrome's share dialog when you record the desktop, so you can share a tab, a window or the screen |
 | `debugger` | Read console and network activity of the captured tab |
 | `activeTab`, `scripting`, `tabs` | Show the in-page panel and read the current tab's URL and title |
 | `storage` | Remember your server, session and drafts |

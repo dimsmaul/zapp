@@ -1,4 +1,4 @@
-import { api, ApiError, currentAccount, hostPattern, send, serverOrigin } from './api.js'
+import { api, ApiError, currentAccount, send, serverOrigin } from './api.js'
 import { hydrate, icon } from './lucide.js'
 import { getDraft, listDrafts, removeDraft, saveDraft } from './store.js'
 
@@ -10,7 +10,6 @@ const embedded = window.top !== window
 const video = $('video')
 let draft
 let busy = false
-let uploadOrigins = []
 
 function status(message = '', error = false) {
   $('status').textContent = message
@@ -162,7 +161,6 @@ function showShare(url) {
   $('open-report').href = url
   $('share').hidden = false
   $('save').hidden = true
-  $('grant').hidden = true
   $('discard').hidden = true
   $('title').readOnly = true
   $('description').readOnly = true
@@ -173,21 +171,47 @@ async function persist(fields) {
   await saveDraft(draft)
 }
 
-function storageOrigins(targets) {
-  return [...new Set(targets.map((target) => {
-    if (target?.method !== 'PUT' || !target.url) throw new Error('The server did not return a valid upload destination.')
-    return hostPattern(serverOrigin(target.url))
-  }))]
+// Uploads go through the Zapp server, so only the configured server address is ever contacted.
+// XMLHttpRequest, not fetch: fetch cannot report upload progress.
+function upload(account, kind, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const fail = (message) => reject(new Error(`Upload failed: ${message} Your draft is still saved locally.`))
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', new URL(`/api/v1/captures/${encodeURIComponent(draft.reportId)}/upload/${kind}`, account.origin))
+    xhr.setRequestHeader('Authorization', `Bearer ${account.token}`)
+    xhr.setRequestHeader('Content-Type', blob.type)
+    xhr.upload.onprogress = (event) => onProgress(event.loaded)
+    xhr.onerror = () => fail('could not reach the server.')
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve()
+      let message = `HTTP ${xhr.status}.`
+      try { message = JSON.parse(xhr.responseText).message ?? message } catch { /* keep the HTTP status */ }
+      fail(message)
+    }
+    xhr.send(blob)
+  })
 }
 
-async function upload(target, blob) {
-  const headers = new Headers()
-  const contentType = new Headers(target.headers).get('content-type')
-  if (contentType) headers.set('Content-Type', contentType)
-  const response = await fetch(target.url, {
-    method: 'PUT', headers, body: blob, redirect: 'error', credentials: 'omit',
-  })
-  if (!response.ok) throw new Error(`Storage upload failed (HTTP ${response.status}). Your draft is still saved locally.`)
+// Uploads the capture and its debugger events together, with one overall progress bar.
+async function uploadAll(account) {
+  const parts = [['capture', draft.blob]]
+  if (draft.events.length) parts.push(['debugger', new Blob([JSON.stringify({ events: draft.events })], { type: 'application/json' })])
+  const total = parts.reduce((sum, [, blob]) => sum + blob.size, 0)
+  const loaded = new Map()
+  const bar = $('upload-progress')
+  bar.value = 0
+  bar.hidden = false
+  const report = (kind) => (bytes) => {
+    loaded.set(kind, bytes)
+    const done = [...loaded.values()].reduce((sum, value) => sum + value, 0)
+    bar.value = Math.min(done / total, 1)
+    status(`Uploading ${Math.round(bar.value * 100)}%`)
+  }
+  try {
+    await Promise.all(parts.map(([kind, blob]) => upload(account, kind, blob, report(kind))))
+  } finally {
+    bar.hidden = true
+  }
 }
 
 async function recoverReport(account) {
@@ -242,19 +266,8 @@ async function publish() {
     })
     if (!targets.bugReportId) throw new Error('The server did not return a capture ID.')
     await persist({ reportId: targets.bugReportId })
-    const uploads = [targets.captureUpload, ...(draft.events.length ? [targets.debuggerUpload] : [])]
-    uploadOrigins = storageOrigins(uploads)
-    if (!await chrome.permissions.contains({ origins: uploadOrigins })) {
-      $('grant').hidden = false
-      status('Allow upload to the configured storage host to publish this report.')
-      return
-    }
-    $('grant').hidden = true
-    status('Uploading capture…')
-    await Promise.all([
-      upload(targets.captureUpload, draft.blob),
-      ...(draft.events.length ? [upload(targets.debuggerUpload, new Blob([JSON.stringify({ events: draft.events })], { type: 'application/json' }))] : []),
-    ])
+    status('Uploading 0%')
+    await uploadAll(account)
     status('Publishing report…')
     await api(account, `/api/v1/captures/${encodeURIComponent(draft.reportId)}/finalize`, {
       method: 'POST', body: { debuggerContentEncoding: 'identity' },
@@ -276,7 +289,6 @@ async function run(callback) {
   busy = true
   $('save').disabled = true
   $('discard').disabled = true
-  $('grant').disabled = true
   try {
     await callback()
   } catch (error) {
@@ -285,7 +297,6 @@ async function run(callback) {
     busy = false
     $('save').disabled = false
     $('discard').disabled = false
-    $('grant').disabled = false
   }
 }
 
@@ -293,10 +304,6 @@ $('save-form').addEventListener('submit', (event) => {
   event.preventDefault()
   void run(submit)
 })
-$('grant').addEventListener('click', () => void run(async () => {
-  if (!await chrome.permissions.request({ origins: uploadOrigins })) throw new Error('Storage permission is required to upload.')
-  await submit()
-}))
 $('discard').addEventListener('click', () => void run(async () => {
   if (!confirm('Discard this local draft?')) return
   await removeDraft(id)

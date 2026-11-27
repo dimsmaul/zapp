@@ -3,13 +3,15 @@ import { saveDraft } from './store.js'
 const MAX_BYTES = 94 * 1024 * 1024
 let capture
 
-async function start(streamId, draft) {
+async function start(streamId, draft, source = 'tab') {
   if (capture) throw new Error('Another recording is already active.')
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId, maxFrameRate: 24 } },
+    video: { mandatory: { chromeMediaSource: source, chromeMediaSourceId: streamId, maxFrameRate: 24 } },
     audio: false,
   })
   try {
+    // Chrome's own "Stop sharing" button (desktop) or closing the shared tab ends the video track.
+    stream.getVideoTracks()[0]?.addEventListener('ended', () => requestStop(draft.id), { once: true })
     const recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 1_500_000 })
     const state = { draft, stream, recorder, chunks: [], bytes: 0, limitReached: false }
     state.stopped = new Promise((resolve) => {
@@ -60,7 +62,7 @@ async function finish({ events, warnings, durationMs }) {
 }
 
 async function handle(message) {
-  if (message.type === 'start') return start(message.streamId, message.draft)
+  if (message.type === 'start') return start(message.streamId, message.draft, message.source)
   if (message.type === 'seal' && capture && capture.recorder.state !== 'inactive') capture.recorder.stop()
   if (message.type === 'finish') return finish(message)
   if (message.type === 'pause' && capture?.recorder.state === 'recording') capture.recorder.pause()

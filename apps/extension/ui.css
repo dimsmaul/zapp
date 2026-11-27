@@ -78,6 +78,10 @@ html:not([data-embedded="true"]) #close-panel { display: none; }
 .target { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--muted-bg); }
 .label { color: var(--muted); font-size: 12px; font-weight: 550; }
 .target p { font-size: 13px; font-weight: 550; }
+.record-area { justify-content: space-between; }
+.segment { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; border-radius: var(--radius-lg); background: var(--muted-bg); }
+.segment button { min-height: 30px; padding: 0 14px; border: 0; border-radius: calc(var(--radius-lg) - 3px); background: transparent; }
+.segment button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 3px #0003; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .action-card { flex-direction: column; gap: 10px; min-height: 92px; padding: 14px 10px; border-radius: var(--radius-lg); }
 .action-card svg { width: 22px; height: 22px; }
