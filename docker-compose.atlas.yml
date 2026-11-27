@@ -1,0 +1,21 @@
+services:
+  mongo:
+    profiles: ["local-mongo"]
+  mongo-init:
+    profiles: ["local-mongo"]
+
+  migrate:
+    depends_on: !reset {}
+    environment:
+      ZAPP_MONGODB_URI: "${ZAPP_MONGODB_URI:?Set the Atlas URI in the deployment environment}"
+      ZAPP_MONGODB_DATABASE: "${ZAPP_MONGODB_DATABASE:-zapp}"
+
+  server:
+    environment:
+      ZAPP_MONGODB_URI: "${ZAPP_MONGODB_URI:?Set the Atlas URI in the deployment environment}"
+      ZAPP_MONGODB_DATABASE: "${ZAPP_MONGODB_DATABASE:-zapp}"
+
+  worker:
+    environment:
+      ZAPP_MONGODB_URI: "${ZAPP_MONGODB_URI:?Set the Atlas URI in the deployment environment}"
+      ZAPP_MONGODB_DATABASE: "${ZAPP_MONGODB_DATABASE:-zapp}"

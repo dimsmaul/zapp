@@ -75,6 +75,15 @@ From `zapp/`, copy the [runtime environment template](../.env.example) to `.env`
 
 Migration `001_capture` creates the baseline collections and indexes. Migration `002_mvp_endpoints` adds workspace invitations, authentication attempt limits, artifact cleanup, and network detail storage. Capture keys and tokens are stored as hashes. Capture tokens expire and are scoped to the issuing key and origin.
 
+### Connect to MongoDB Atlas
+
+Set `ZAPP_MONGODB_URI` and `ZAPP_MONGODB_DATABASE` in a private deployment environment file. Use both Compose files and enable the worker profile for debugger processing. The Atlas override connects the migration, API, and worker to the same database and keeps the local MongoDB services disabled by default. Atlas must allow the deployment host's egress IP. [Atlas connection troubleshooting](https://www.mongodb.com/docs/atlas/troubleshoot-connection/)
+
+```sh
+docker compose --env-file /path/to/private/zapp.env \
+  -f docker-compose.yml -f docker-compose.atlas.yml --profile worker up -d
+```
+
 ### Debugger worker
 
 With R2 configured, start the Compose `worker` profile to process debugger uploads and remove objects queued by report deletion. The worker uses the same MongoDB database and R2 configuration as the API. To run it outside Compose, pass `worker` to the `zapp-backend` binary after applying the migration.
