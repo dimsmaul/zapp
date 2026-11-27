@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CardGridSkeleton } from "@/components/skeletons";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api";
+import { openExtension } from "@/lib/extension";
 import { type ReportSummary, type Visibility, listReports, updateVisibility } from "./api";
 import { visibilityOption, visibilityOptions } from "./visibility";
 
@@ -129,7 +130,7 @@ export function ReportsPage() {
     <section className="w-full">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b py-3 pl-14 pr-4 sm:pl-16 sm:pr-6">
         <h1 className="text-2xl font-semibold">All Zapp</h1>
-        <Button onClick={() => setCapture("choose")}><Plus />New Zapp</Button>
+        <Button onClick={() => void openExtension().then((opened) => { if (!opened) setCapture("choose"); })}><Plus />New Zapp</Button>
       </header>
       <div className="grid gap-5 p-4 sm:p-6 lg:px-10 lg:py-8">
         {reports.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(reports.error)}</AlertDescription></Alert>}

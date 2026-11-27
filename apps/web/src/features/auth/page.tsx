@@ -1,15 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Bot, Link2, Terminal, Video } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/api";
-import { authenticate } from "./api";
-import { useSession } from "./session";
+import { authenticate, extensionSession } from "./api";
+import { isActive, useSession } from "./session";
 
 export function AuthPage() {
   const navigate = useNavigate();
@@ -17,14 +17,32 @@ export function AuthPage() {
   const setSession = useSession((state) => state.setSession);
   const [mode, setMode] = useState<"login" | "register">("login");
   const registering = mode === "register";
+  const { ref, ext, state } = useSearch({ from: "/login" });
+  // Extension IDs are 32 letters a-p. Anything else is not an extension we should hand a session to.
+  const forExtension = ref === "extension" && /^[a-p]{32}$/.test(ext ?? "") && Boolean(state);
+  const current = useSession((value) => value.session);
+  const handoff = useMutation({
+    mutationFn: async (token: string) => {
+      const session = await extensionSession(token);
+      const hash = new URLSearchParams({
+        token: session.token, expiresAt: session.expiresAt, userId: session.user.id, state: state ?? "",
+      });
+      window.location.replace(`chrome-extension://${ext}/auth.html#${hash}`);
+    },
+  });
   const auth = useMutation({
     mutationFn: (credentials: { email: string; password: string }) => authenticate(mode, credentials),
     onSuccess: async (session) => {
       queryClient.clear();
       setSession(session);
+      if (forExtension) return handoff.mutate(session.token);
       await navigate({ to: session.workspaceId ? "/reports" : "/workspaces", replace: true });
     },
   });
+  // Already signed in on this tab: connect the extension without asking again.
+  useEffect(() => {
+    if (forExtension && isActive(current) && handoff.isIdle) handoff.mutate(current.token);
+  }, [forExtension, current, handoff]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,12 +83,16 @@ export function AuthPage() {
           <CardHeader>
             <h1 className="flex items-center gap-2 text-lg font-semibold lg:hidden"><img src="/logo.svg" alt="" className="size-8" />Zapp</h1>
             <CardTitle>{registering ? "Create an account" : "Welcome back"}</CardTitle>
-            <CardDescription>{registering ? "Use at least 12 characters for your password." : "Sign in to your Zapp workspaces and reports."}</CardDescription>
+            <CardDescription>
+              {forExtension ? "Sign in to connect the Zapp extension."
+                : registering ? "Use at least 12 characters for your password." : "Sign in to your Zapp workspaces and reports."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit}>
               <FieldGroup>
-                {auth.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(auth.error)}</AlertDescription></Alert>}
+                {(auth.isError || handoff.isError) && <Alert variant="destructive"><AlertDescription>{errorMessage(auth.error ?? handoff.error)}</AlertDescription></Alert>}
+                {handoff.isPending && <Alert><AlertDescription>Connecting the extension…</AlertDescription></Alert>}
                 <Field>
                   <FieldLabel htmlFor="email">Email</FieldLabel>
                   <Input id="email" name="email" type="email" autoComplete="username" required />
