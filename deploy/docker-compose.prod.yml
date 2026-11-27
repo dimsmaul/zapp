@@ -1,0 +1,37 @@
+# Production stack for the Zapp backend. The deploy workflow copies this file to the
+# server as docker-compose.yml next to a `.env` file that you create once by hand
+# (see .env.example: ZAPP_MONGODB_URI, ZAPP_STORAGE_*, ZAPP_WEB_ORIGIN).
+#
+# The server listens on 127.0.0.1 only. Put a reverse proxy (Caddy, nginx) with TLS
+# in front of it for your public API hostname.
+name: zapp
+
+x-backend: &backend
+  image: zapp-backend:latest
+  env_file: .env
+  init: true
+
+services:
+  migrate:
+    <<: *backend
+    command: ["migrate"]
+    restart: "no"
+
+  server:
+    <<: *backend
+    restart: unless-stopped
+    environment:
+      ZAPP_BIND_ADDR: "0.0.0.0:8080"
+    ports:
+      - "127.0.0.1:${ZAPP_SERVER_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

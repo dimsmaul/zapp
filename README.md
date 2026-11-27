@@ -128,6 +128,36 @@ Use a throwaway database for these. The tests write to the MongoDB at `ZAPP_TEST
 - **Server and worker** ship as Docker images built from `apps/server/Dockerfile`. Run `migrate` once per release before starting the new server. The image's entrypoint takes `migrate` or `worker` as its command.
 - **Web** can be served by nginx from `apps/web/Dockerfile` (it proxies `/api/` to a `server` host), or deployed to Vercel.
 
+### Server on an Oracle VM (GitHub Actions)
+
+`.github/workflows/deploy-server.yml` builds the backend image on GitHub, copies it to your VM over SSH, and restarts the stack with `deploy/docker-compose.prod.yml`. It runs on pushes to `main` that touch `apps/server`, `deploy`, or the workflow itself, and can be started by hand from the Actions tab. No container registry is needed.
+
+**One-time setup on the VM**
+
+1. Install Docker with the Compose plugin, and let the SSH user run `docker`.
+2. Create the deploy folder (default `~/zapp`) and a `.env` file in it with at least `ZAPP_MONGODB_URI`, `ZAPP_WEB_ORIGIN`, and the `ZAPP_STORAGE_*` values from `.env.example`. The workflow never touches this file.
+3. Put a reverse proxy with TLS in front of `127.0.0.1:8080` for your public API hostname.
+
+**Repository secrets** (Settings → Secrets and variables → Actions)
+
+| Secret | Value |
+| --- | --- |
+| `SSH_HOST` | VM address |
+| `SSH_USER` | SSH user that can run `docker` |
+| `SSH_PRIVATE_KEY` | Private key for a deploy-only key pair. Add its public key to the VM's `authorized_keys`. |
+| `SSH_KNOWN_HOSTS` | Output of `ssh-keyscan -p <port> <host>`, so the host key is pinned. |
+| `SSH_PORT` | Optional, defaults to `22`. |
+
+**Repository variables**
+
+| Variable | Value |
+| --- | --- |
+| `DEPLOY_ARCH` | `arm64` for Oracle Ampere (A1) VMs. Leave unset for x86 (amd64). The image must match the VM's CPU. |
+| `DEPLOY_PATH` | Optional, defaults to `~/zapp`. |
+| `SERVER_PORT` | Optional, defaults to `8080`. |
+
+A release applies the database migration first, restarts the server and worker, and then waits for `/readyz`. The previous image stays on the VM as `zapp-backend:previous`. To roll back, run `docker tag zapp-backend:previous zapp-backend:latest && docker compose up -d` in the deploy folder.
+
 ### Vercel
 
 `apps/web/vercel.json` holds the build settings and rewrites `/api/*` to the server and every other path to `index.html`. For this to work:

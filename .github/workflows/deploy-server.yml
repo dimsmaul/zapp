@@ -1,0 +1,87 @@
+name: Deploy server
+
+# Builds the backend Docker image on GitHub, copies it to the Oracle VM over SSH,
+# and restarts the stack there. No container registry is involved.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/server/**"
+      - "deploy/**"
+      - ".github/workflows/deploy-server.yml"
+  workflow_dispatch:
+
+# Never run two deploys at once, and let a running deploy finish.
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # Build on the same CPU architecture as the VM. Set the repository variable
+    # DEPLOY_ARCH to "arm64" for Oracle Ampere (A1) instances; the default is amd64.
+    runs-on: ${{ vars.DEPLOY_ARCH == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '~/zapp' }}
+      SERVER_PORT: ${{ vars.SERVER_PORT || '8080' }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          load: true
+          tags: zapp-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Output of `ssh-keyscan -p <port> <host>`, so the host key is pinned rather than trusted on first use.
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Copy image and compose file to the server
+        run: |
+          ssh_options=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
+          target="$SSH_USER@$SSH_HOST"
+
+          ssh "${ssh_options[@]}" -p "$SSH_PORT" "$target" "mkdir -p $DEPLOY_PATH"
+          # Keep the running image as "previous" so a bad release can be rolled back by hand.
+          ssh "${ssh_options[@]}" -p "$SSH_PORT" "$target" "docker tag zapp-backend:latest zapp-backend:previous 2>/dev/null || true"
+          docker save zapp-backend:latest | gzip | ssh "${ssh_options[@]}" -p "$SSH_PORT" "$target" "gunzip | docker load"
+          scp "${ssh_options[@]}" -P "$SSH_PORT" deploy/docker-compose.prod.yml "$target:$DEPLOY_PATH/docker-compose.yml"
+
+      - name: Restart the stack
+        run: |
+          ssh_options=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
+          # `docker compose up` applies the migration first, then starts the server and worker.
+          ssh "${ssh_options[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd $DEPLOY_PATH && docker compose up -d --remove-orphans"
+
+      - name: Wait until the server is ready
+        run: |
+          ssh_options=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
+          ssh "${ssh_options[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
+            for attempt in \$(seq 1 20); do
+              curl -fsS http://127.0.0.1:$SERVER_PORT/readyz && exit 0
+              sleep 3
+            done
+            cd $DEPLOY_PATH && docker compose logs --tail=60 server
+            exit 1
+          "
