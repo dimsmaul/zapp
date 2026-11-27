@@ -6,7 +6,7 @@ use mongodb::{
 };
 use std::time::Duration;
 
-pub const SCHEMA_VERSION: &str = "002_mvp_endpoints";
+pub const SCHEMA_VERSION: &str = "003_comments";
 
 pub(crate) async fn is_ready(db: &Database) -> Result<bool> {
     Ok(db
@@ -193,6 +193,14 @@ pub async fn migrate(db: &Database) -> Result<()> {
     db.collection::<Document>("report_event_details")
         .create_index(index("event_details_report", doc! { "reportId": 1 }, false))
         .await?;
+    record_migration(db, "002_mvp_endpoints").await?;
+
+    create_collection(db, "report_comments", &[
+        ("reportId", "string"), ("authorId", "string"), ("body", "string"), ("createdAt", "date"),
+    ]).await?;
+    db.collection::<Document>("report_comments")
+        .create_index(index("report_comments_timeline", doc! { "reportId": 1, "createdAt": 1, "_id": 1 }, false))
+        .await?;
     record_migration(db, SCHEMA_VERSION).await
 }
 
@@ -215,7 +223,7 @@ async fn create_collection(db: &Database, name: &str, fields: &[(&str, &str)]) -
         properties.insert(field, doc! { "bsonType": field_type });
     }
     if name == "reports" {
-        properties.insert("visibility", doc! { "enum": ["private", "public"] });
+        properties.insert("visibility", doc! { "enum": ["private", "public", "restricted"] });
         properties.insert(
             "debuggerStatus",
             doc! { "enum": ["not_uploaded", "pending", "processing", "ready", "failed"] },

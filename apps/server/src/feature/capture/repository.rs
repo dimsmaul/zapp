@@ -17,6 +17,13 @@ impl CaptureRepository<'_> {
         ObjectId::new().to_hex()
     }
 
+    /// New captures use the workspace's default visibility unless the caller asks for another.
+    pub async fn default_visibility(&self, workspace: &str) -> Result<Option<String>, CaptureError> {
+        let found = self.0.collection::<Document>("workspaces").find_one(doc! { "_id": workspace })
+            .projection(doc! { "defaultVisibility": 1 }).await?;
+        Ok(found.and_then(|found| found.get_str("defaultVisibility").ok().map(str::to_owned)))
+    }
+
     pub async fn active_key(&self, raw_key: &str) -> Result<CaptureKey, CaptureError> {
         let key = self
             .0

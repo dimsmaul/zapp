@@ -66,6 +66,98 @@ pub(super) async fn remove_member(State(state): State<AppState>, session: Sessio
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub(super) struct RoleInput { role: String }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SettingsInput { name: Option<String>, default_visibility: Option<String> }
+
+/// Only owners change roles, and an owner's role cannot be changed.
+pub(super) async fn change_role(State(state): State<AppState>, session: Session, Path((id, user)): Path<(String, String)>, Json(input): Json<RoleInput>) -> Result<Json<Value>, ApiError> {
+    let actor = repository::membership(&state.db, &session.user_id, &id).await?.ok_or(ApiError::NOT_FOUND)?;
+    if actor != "owner" {
+        return Err(ApiError::FORBIDDEN);
+    }
+    if !matches!(input.role.as_str(), "admin" | "member") {
+        return Err(ApiError::invalid("Role must be admin or member."));
+    }
+    let target = repository::membership(&state.db, &user, &id).await?.ok_or(ApiError::NOT_FOUND)?;
+    if target == "owner" {
+        return Err(ApiError::FORBIDDEN);
+    }
+    state.db.collection::<Document>("workspace_members")
+        .update_one(doc! { "workspaceId": &id, "userId": &user }, doc! { "$set": { "role": &input.role } }).await?;
+    Ok(Json(json!({ "userId": user, "role": input.role })))
+}
+
+pub(super) async fn update(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<SettingsInput>) -> Result<Json<Value>, ApiError> {
+    repository::require_admin(&state.db, &session.user_id, &id).await?;
+    let mut fields = Document::new();
+    if let Some(name) = input.name.as_deref() {
+        let name = name.trim();
+        if name.is_empty() || name.len() > 200 {
+            return Err(ApiError::invalid("Workspace name must be between 1 and 200 bytes."));
+        }
+        fields.insert("name", name);
+    }
+    if let Some(visibility) = input.default_visibility.as_deref() {
+        if !matches!(visibility, "public" | "private" | "restricted") {
+            return Err(ApiError::invalid("Invalid default visibility."));
+        }
+        fields.insert("defaultVisibility", visibility);
+    }
+    if fields.is_empty() {
+        return Err(ApiError::invalid("Provide a name or a default visibility."));
+    }
+    state.db.collection::<Document>("workspaces").update_one(doc! { "_id": &id }, doc! { "$set": &fields }).await?;
+    Ok(Json(json!({ "id": id, "name": fields.get_str("name").ok(), "defaultVisibility": fields.get_str("defaultVisibility").ok() })))
+}
+
+/// Admins and members can leave. Owners delete the workspace instead, so it is never left without one.
+pub(super) async fn leave(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    let role = repository::membership(&state.db, &session.user_id, &id).await?.ok_or(ApiError::NOT_FOUND)?;
+    if role == "owner" {
+        return Err(ApiError::conflict("Owners cannot leave a workspace. Delete it instead."));
+    }
+    repository::remove_member(&state.db, &id, &session.user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Owners only, and only once the workspace has no reports left.
+pub(super) async fn delete_workspace(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    let role = repository::membership(&state.db, &session.user_id, &id).await?.ok_or(ApiError::NOT_FOUND)?;
+    if role != "owner" {
+        return Err(ApiError::FORBIDDEN);
+    }
+    let reports = state.db.collection::<Document>("reports")
+        .count_documents(doc! { "workspaceId": &id, "deletedAt": null }).await?;
+    if reports > 0 {
+        return Err(ApiError::conflict("Delete this workspace's reports first."));
+    }
+    repository::delete_workspace(&state.db, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(super) async fn invitations(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    repository::require_admin(&state.db, &session.user_id, &id).await?;
+    let pending: Vec<Document> = state.db.collection::<Document>("workspace_invitations")
+        .find(doc! { "workspaceId": &id, "expiresAt": { "$gt": DateTime::now() } })
+        .sort(doc! { "expiresAt": 1 }).await?.try_collect().await?;
+    let items: Vec<Value> = pending.iter().map(|invitation| json!({
+        "id": invitation.get_str("_id").ok(), "email": invitation.get_str("email").ok(),
+        "expiresAt": invitation.get_datetime("expiresAt").ok().and_then(|date| date.try_to_rfc3339_string().ok()),
+    })).collect();
+    Ok(Json(json!({ "items": items })))
+}
+
+pub(super) async fn revoke_invitation(State(state): State<AppState>, session: Session, Path((id, invitation)): Path<(String, String)>) -> Result<StatusCode, ApiError> {
+    repository::require_admin(&state.db, &session.user_id, &id).await?;
+    let result = state.db.collection::<Document>("workspace_invitations")
+        .delete_one(doc! { "_id": invitation, "workspaceId": &id }).await?;
+    if result.deleted_count == 0 { Err(ApiError::NOT_FOUND) } else { Ok(StatusCode::NO_CONTENT) }
+}
+
 pub(super) async fn invite(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<InviteInput>) -> Result<impl IntoResponse, ApiError> {
     repository::require_admin(&state.db, &session.user_id, &id).await?;
     let email = normalize_email(&input.email).ok_or(ApiError::invalid("Enter a valid email address."))?;

@@ -21,6 +21,8 @@ pub(super) struct ShareInput { expires_in_seconds: Option<u32> }
 
 pub(super) async fn list(State(state): State<AppState>, session: Session, Query(page): Query<Page>) -> Result<Json<Value>, ApiError> {
     let workspace = active_workspace(&state.db, &session).await?;
+    let user = session.user_id.as_str();
+    let admin = matches!(membership(&state.db, user, workspace).await?.as_deref(), Some("owner" | "admin"));
     let limit = i64::from(page.limit.unwrap_or(30).clamp(1, 100));
     let mut filter = doc! { "workspaceId": workspace, "deletedAt": null };
     if let Some(cursor) = page.cursor.as_deref() {
@@ -32,6 +34,12 @@ pub(super) async fn list(State(state): State<AppState>, session: Session, Query(
             doc! { "createdAt": time, "_id": { "$lt": id } }
         ]);
     }
+    if !admin {
+        // Restricted reports are listed only for the reporter and the people they were shared with.
+        filter = doc! { "$and": [filter, doc! { "$or": [
+            { "visibility": { "$ne": "restricted" } }, { "reporterId": user }, { "sharedWith": user },
+        ] }] };
+    }
     let mut reports: Vec<Document> = state.db.collection::<Document>("reports").find(filter)
         .sort(doc! { "createdAt": -1, "_id": -1 }).limit(limit + 1).await?.try_collect().await?;
     let has_more = reports.len() > limit as usize;
@@ -39,8 +47,6 @@ pub(super) async fn list(State(state): State<AppState>, session: Session, Query(
     let next = reports.last().filter(|_| has_more).and_then(|report| {
         Some(format!("{}:{}", report.get_datetime("createdAt").ok()?.timestamp_millis(), report.get_str("_id").ok()?))
     });
-    let user = session.user_id.as_str();
-    let admin = matches!(membership(&state.db, user, workspace).await?.as_deref(), Some("owner" | "admin"));
     let mut items = Vec::with_capacity(reports.len());
     for report in &reports {
         let mut item = summary(report);
@@ -71,7 +77,7 @@ pub(super) async fn update(State(state): State<AppState>, session: Session, Path
         fields.insert("description", description);
     }
     if let Some(visibility) = input.visibility {
-        if !matches!(visibility.as_str(), "public" | "private") { return Err(ApiError::invalid("Invalid report visibility.")); }
+        if !matches!(visibility.as_str(), "public" | "private" | "restricted") { return Err(ApiError::invalid("Invalid report visibility.")); }
         fields.insert("visibility", visibility);
     }
     if fields.is_empty() { return Err(ApiError::invalid("Provide at least one report field.")); }
@@ -79,6 +85,52 @@ pub(super) async fn update(State(state): State<AppState>, session: Session, Path
     let updated = state.db.collection::<Document>("reports").find_one_and_update(filter, doc! { "$set": fields })
         .return_document(ReturnDocument::After).await?.ok_or(ApiError::NOT_FOUND)?;
     Ok(Json(summary(&updated)))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PersonInput { user_id: String }
+
+/// Who can open a report: its reporter plus the members it was shared with.
+async fn access_view(db: &Database, report: &Document) -> Result<Value, ApiError> {
+    let reporter = report.get_str("reporterId").ok();
+    let shared: Vec<&str> = report.get_array("sharedWith").ok().into_iter().flatten()
+        .filter_map(|id| id.as_str()).collect();
+    let ids: Vec<&str> = reporter.into_iter().chain(shared.iter().copied()).collect();
+    let users: Vec<Document> = db.collection::<Document>("users").find(doc! { "_id": { "$in": &ids } })
+        .projection(doc! { "_id": 1, "email": 1 }).await?.try_collect().await?;
+    let person = |id: &str, kind: &str| {
+        let email = users.iter().find(|user| user.get_str("_id") == Ok(id)).and_then(|user| user.get_str("email").ok());
+        json!({ "userId": id, "email": email, "kind": kind })
+    };
+    let mut people: Vec<Value> = reporter.map(|id| person(id, "owner")).into_iter().collect();
+    people.extend(shared.iter().filter(|id| Some(**id) != reporter).map(|id| person(id, "member")));
+    Ok(json!({ "visibility": report.get_str("visibility").ok(), "people": people }))
+}
+
+pub(super) async fn access(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    let filter = manage_filter(&state.db, &session, &id).await?;
+    let report = state.db.collection::<Document>("reports").find_one(filter).await?.ok_or(ApiError::NOT_FOUND)?;
+    Ok(Json(access_view(&state.db, &report).await?))
+}
+
+pub(super) async fn share_with(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<PersonInput>) -> Result<Json<Value>, ApiError> {
+    let filter = manage_filter(&state.db, &session, &id).await?;
+    let workspace = filter.get_str("workspaceId").map_err(|_| ApiError::NOT_FOUND)?;
+    membership(&state.db, &input.user_id, workspace).await?
+        .ok_or(ApiError::invalid("Only members of this workspace can be added."))?;
+    let report = state.db.collection::<Document>("reports")
+        .find_one_and_update(filter, doc! { "$addToSet": { "sharedWith": &input.user_id }, "$set": { "updatedAt": DateTime::now() } })
+        .return_document(ReturnDocument::After).await?.ok_or(ApiError::NOT_FOUND)?;
+    Ok(Json(access_view(&state.db, &report).await?))
+}
+
+pub(super) async fn unshare(State(state): State<AppState>, session: Session, Path((id, user)): Path<(String, String)>) -> Result<Json<Value>, ApiError> {
+    let filter = manage_filter(&state.db, &session, &id).await?;
+    let report = state.db.collection::<Document>("reports")
+        .find_one_and_update(filter, doc! { "$pull": { "sharedWith": &user }, "$set": { "updatedAt": DateTime::now() } })
+        .return_document(ReturnDocument::After).await?.ok_or(ApiError::NOT_FOUND)?;
+    Ok(Json(access_view(&state.db, &report).await?))
 }
 
 pub(super) async fn remove(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
@@ -110,7 +162,7 @@ pub(super) async fn remove(State(state): State<AppState>, session: Session, Path
                 doc! { "$setOnInsert": { "objectKey": key, "attempts": 0, "nextAttemptAt": after } },
             ).upsert(true).session(&mut *tx).await?;
         }
-        for name in ["share_links", "report_events", "report_event_details", "ingestion_jobs"] {
+        for name in ["share_links", "report_events", "report_event_details", "ingestion_jobs", "report_comments"] {
             db.collection::<Document>(name).delete_many(doc! { "reportId": id.as_str() }).session(&mut *tx).await?;
         }
         Ok(true)

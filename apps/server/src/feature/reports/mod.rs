@@ -23,6 +23,8 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/reports", get(management::list))
         .route("/api/v1/reports/{id}", get(read_report).patch(management::update).delete(management::remove))
+        .route("/api/v1/reports/{id}/access", get(management::access).post(management::share_with))
+        .route("/api/v1/reports/{id}/access/{user_id}", delete(management::unshare))
         .route("/api/v1/reports/{id}/share-links", post(management::create_link))
         .route("/api/v1/reports/{id}/share-links/{link_id}", delete(management::revoke_link))
 }
@@ -94,7 +96,7 @@ pub(crate) async fn read_report(
             "debuggerStatus": report.get_str("debuggerStatus").ok(),
             "createdAt": report.get_datetime("createdAt").ok().and_then(|date| date.try_to_rfc3339_string().ok()),
             "reporter": member.reporter, "visibility": report.get_str("visibility").ok(),
-            "canManage": member.can_manage,
+            "canManage": member.can_manage, "workspaceId": member.workspace_id,
         })),
     ))
 }
@@ -105,10 +107,12 @@ struct MemberView {
     reporter: Option<String>,
     /// Owners, admins, and the reporter can change the report's visibility.
     can_manage: bool,
+    /// The report's workspace, so members can look up who to mention or share with.
+    workspace_id: Option<String>,
 }
 
 async fn member_view(db: &Database, headers: &HeaderMap, report: &Document) -> Result<MemberView, ApiError> {
-    let outsider = MemberView { reporter: None, can_manage: false };
+    let outsider = MemberView { reporter: None, can_manage: false, workspace_id: None };
     let (Some(raw), Ok(workspace)) = (bearer_token(headers), report.get_str("workspaceId")) else {
         return Ok(outsider);
     };
@@ -129,14 +133,13 @@ async fn member_view(db: &Database, headers: &HeaderMap, report: &Document) -> R
             .and_then(|user| user.get_str("email").ok().map(str::to_owned)),
         None => None,
     };
-    Ok(MemberView { reporter, can_manage })
+    Ok(MemberView { reporter, can_manage, workspace_id: Some(workspace.to_owned()) })
 }
 
 pub(crate) async fn visible_report(db: &Database, headers: &HeaderMap, id: &str) -> Result<Document, ApiError> {
     let report = find_report(db, id).await?;
-    let workspace = report.get_str("workspaceId").map_err(|_| NOT_FOUND)?;
     if report.get_str("visibility") != Ok("public")
-        && !can_view_report(db, headers, id, workspace).await? {
+        && !can_view_report(db, headers, &report).await? {
         return Err(NOT_FOUND);
     }
     Ok(report)
@@ -144,12 +147,24 @@ pub(crate) async fn visible_report(db: &Database, headers: &HeaderMap, id: &str)
 
 pub(crate) async fn visible_report_for_user(db: &Database, user: &str, id: &str) -> Result<Document, ApiError> {
     let report = find_report(db, id).await?;
-    let workspace = report.get_str("workspaceId").map_err(|_| NOT_FOUND)?;
     if report.get_str("visibility") != Ok("public")
-        && !has_membership(db, workspace, user).await? {
+        && !member_may_view(db, &report, user).await? {
         return Err(NOT_FOUND);
     }
     Ok(report)
+}
+
+/// Workspace members can open a report unless it is `restricted`. Then only the reporter,
+/// workspace owners and admins, and the people it was shared with can.
+async fn member_may_view(db: &Database, report: &Document, user: &str) -> Result<bool, ApiError> {
+    let Ok(workspace) = report.get_str("workspaceId") else { return Ok(false) };
+    let Some(role) = membership(db, user, workspace).await? else { return Ok(false) };
+    if report.get_str("visibility") != Ok("restricted") {
+        return Ok(true);
+    }
+    Ok(matches!(role.as_str(), "owner" | "admin")
+        || report.get_str("reporterId") == Ok(user)
+        || report.get_array("sharedWith").is_ok_and(|ids| ids.iter().any(|id| id.as_str() == Some(user))))
 }
 
 async fn find_report(db: &Database, id: &str) -> Result<Document, ApiError> {
@@ -159,12 +174,8 @@ async fn find_report(db: &Database, id: &str) -> Result<Document, ApiError> {
         .ok_or(NOT_FOUND)
 }
 
-async fn can_view_report(
-    db: &Database,
-    headers: &HeaderMap,
-    id: &str,
-    workspace: &str,
-) -> Result<bool, ApiError> {
+async fn can_view_report(db: &Database, headers: &HeaderMap, report: &Document) -> Result<bool, ApiError> {
+    let id = report.get_str("_id").map_err(|_| NOT_FOUND)?;
     let now = DateTime::now();
     if let Some(raw) = headers
         .get("x-zapp-share-token")
@@ -197,17 +208,7 @@ async fn can_view_report(
     else {
         return Ok(false);
     };
-    has_membership(db, workspace, user).await
-}
-
-async fn has_membership(db: &Database, workspace: &str, user: &str) -> Result<bool, ApiError> {
-    Ok(db
-        .collection::<Document>("workspace_members")
-        .find_one(doc! {
-            "workspaceId": workspace, "userId": user,
-        })
-        .await?
-        .is_some())
+    member_may_view(db, report, user).await
 }
 
 const NOT_FOUND: ApiError = ApiError(StatusCode::NOT_FOUND, "NOT_FOUND", "Report not found.");

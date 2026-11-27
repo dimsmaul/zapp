@@ -7,7 +7,7 @@ use axum::{
 use serde_json::{Value, json};
 
 use super::tools;
-use crate::{adapter::http::{ApiError, AppState}, feature::auth::Session};
+use crate::{adapter::http::{ApiError, AppState}, feature::{auth::Session, tokens}};
 
 const VERSION: &str = "2025-11-25";
 
@@ -17,8 +17,8 @@ pub(super) async fn handle(
     session: Result<Session, ApiError>,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Response {
-    let response = match authorize(&state, &headers, session) {
-        Ok(session) => dispatch(&state, &session, body).await,
+    let response = match authorize(&state, &headers, session).await {
+        Ok(user) => dispatch(&state, &user, body).await,
         Err(response) => response,
     };
     no_store(response)
@@ -29,37 +29,45 @@ pub(super) async fn no_stream(
     headers: HeaderMap,
     session: Result<Session, ApiError>,
 ) -> Response {
-    no_store(match authorize(&state, &headers, session) {
+    no_store(match authorize(&state, &headers, session).await {
         Ok(_) => (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "POST")]).into_response(),
         Err(response) => response,
     })
 }
 
-fn authorize(state: &AppState, headers: &HeaderMap, session: Result<Session, ApiError>) -> Result<Session, Response> {
+/// Returns the user making the request: either a signed-in session or an agent's personal access token.
+async fn authorize(state: &AppState, headers: &HeaderMap, session: Result<Session, ApiError>) -> Result<String, Response> {
     for origin in headers.get_all(header::ORIGIN) {
         if origin.to_str().ok() != Some(state.web_origin.as_str()) {
             return Err(StatusCode::FORBIDDEN.into_response());
         }
     }
-    let session = match session {
-        Err(error) if error.0 == StatusCode::UNAUTHORIZED => Err((
-            StatusCode::UNAUTHORIZED,
-            [(header::WWW_AUTHENTICATE, "Bearer realm=\"zapp-mcp\"")],
-        ).into_response()),
-        Err(error) => Err(error.into_response()),
-        Ok(session) => Ok(session),
-    }?;
+    let unauthorized = || (
+        StatusCode::UNAUTHORIZED,
+        [(header::WWW_AUTHENTICATE, "Bearer realm=\"zapp-mcp\"")],
+    ).into_response();
+    let user = match session {
+        Ok(session) => session.user_id,
+        Err(error) if error.0 == StatusCode::UNAUTHORIZED => {
+            match tokens::user_for_token(&state.db, headers).await {
+                Ok(Some(user)) => user,
+                Ok(None) => return Err(unauthorized()),
+                Err(error) => return Err(error.into_response()),
+            }
+        }
+        Err(error) => return Err(error.into_response()),
+    };
     if let Some(version) = headers.get("mcp-protocol-version") {
         if version.to_str().ok() != Some(VERSION) {
             return Err(rpc_error(StatusCode::BAD_REQUEST, &Value::Null, -32600, "Unsupported MCP protocol version."));
         }
     }
-    Ok(session)
+    Ok(user)
 }
 
 async fn dispatch(
     state: &AppState,
-    session: &Session,
+    user: &str,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Response {
     let Json(request) = match body {
@@ -97,7 +105,7 @@ async fn dispatch(
             let Some(call) = params.and_then(tools::Call::parse) else {
                 return rpc_error(StatusCode::OK, id, -32602, "Unknown tool or invalid arguments.");
             };
-            match call.run(&state.db, &session.user_id).await {
+            match call.run(&state.db, user).await {
                 Ok(data) => json!({
                     "content": [{ "type": "text", "text": data.to_string() }],
                     "structuredContent": data,

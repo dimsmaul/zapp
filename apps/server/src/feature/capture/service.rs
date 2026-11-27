@@ -70,8 +70,12 @@ impl CaptureService<'_> {
         )
         .ok_or(CaptureError::InvalidUpload)?
         .to_owned();
-        let visibility = input.visibility.unwrap_or_else(|| "private".to_owned());
-        if !matches!(visibility.as_str(), "public" | "private")
+        let visibility = match input.visibility {
+            Some(visibility) => visibility,
+            None => self.repository.default_visibility(owner.workspace_id).await?
+                .unwrap_or_else(|| "private".to_owned()),
+        };
+        if !matches!(visibility.as_str(), "public" | "private" | "restricted")
             || input
                 .title
                 .as_deref()

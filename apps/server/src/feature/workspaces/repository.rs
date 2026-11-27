@@ -54,7 +54,7 @@ pub(super) async fn list(db: &Database, user: &str) -> Result<Vec<Document>, Api
         doc! { "$lookup": { "from": "workspaces", "localField": "workspaceId", "foreignField": "_id", "as": "workspace" } },
         doc! { "$unwind": "$workspace" },
         doc! { "$sort": { "workspace.name": 1, "workspaceId": 1 } },
-        doc! { "$project": { "_id": 0, "id": "$workspaceId", "name": "$workspace.name", "role": 1 } },
+        doc! { "$project": { "_id": 0, "id": "$workspaceId", "name": "$workspace.name", "role": 1, "defaultVisibility": "$workspace.defaultVisibility" } },
     ]).await?.try_collect().await?;
     Ok(workspaces)
 }
@@ -76,6 +76,28 @@ pub(super) async fn remove_member(db: &Database, workspace: &str, user: &str) ->
     // Sessions that had this workspace selected must pick another one.
     db.collection::<Document>("user_sessions").update_many(
         doc! { "userId": user, "activeWorkspaceId": workspace },
+        doc! { "$unset": { "activeWorkspaceId": "" } },
+    ).await?;
+    Ok(())
+}
+
+/// Removes the workspace with its members, invitations, and capture keys. Callers make sure it
+/// has no reports first, because deleting a report also queues cleanup of its stored files.
+pub(super) async fn delete_workspace(db: &Database, workspace: &str) -> Result<(), ApiError> {
+    let mut tx = db.client().start_session().await?;
+    tx.start_transaction().and_run((db.clone(), workspace.to_owned()), |tx, (db, workspace)| {
+        async move {
+            for collection in ["workspace_members", "workspace_invitations", "capture_keys", "capture_tokens"] {
+                db.collection::<Document>(collection)
+                    .delete_many(doc! { "workspaceId": workspace.as_str() }).session(&mut *tx).await?;
+            }
+            db.collection::<Document>("workspaces")
+                .delete_one(doc! { "_id": workspace.as_str() }).session(&mut *tx).await?;
+            Ok(())
+        }.boxed()
+    }).await?;
+    db.collection::<Document>("user_sessions").update_many(
+        doc! { "activeWorkspaceId": workspace },
         doc! { "$unset": { "activeWorkspaceId": "" } },
     ).await?;
     Ok(())

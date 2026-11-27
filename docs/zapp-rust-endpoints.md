@@ -9,11 +9,11 @@ The first backend milestone lets a reporter capture a bug, upload the recording 
 | Method and path | Purpose | Status |
 | --- | --- | --- |
 | `GET /healthz` | Return `200 OK` when the Rust HTTP process is serving requests. | Implemented |
-| `GET /readyz` | Confirm MongoDB is reachable and migration `002_mvp_endpoints` is recorded. | Implemented |
+| `GET /readyz` | Confirm MongoDB is reachable and migration `003_comments` is recorded. | Implemented |
 | `POST /api/embed/capture-token` | Validate the widget key and origin and issue a short-lived capture token. | Implemented |
 | `POST /api/embed/bug-report-upload-session` | Create or reuse a draft and return signed URLs for direct uploads to object storage. | Implemented with S3 configuration |
 | `POST /api/embed/bug-report-finalize` | Verify and publish the media, save the report, and return its share URL. Queue debugger processing durably and make repeated finalization return the same report. | Implemented with S3 configuration |
-| `GET /api/v1/reports/{id}` | Check report access and return report details, `createdAt`, a signed media URL, and debugger processing status. `reporter` (the reporter's email) is returned only to signed-in members of the report's workspace and is `null` for public and share-link viewers. The response also includes `visibility` and `canManage`, which is `true` only for workspace owners, admins, and the reporter, who may change visibility with `PATCH /api/v1/reports/{id}`. A viewer with access can fetch media while debugger processing is pending. | Implemented with S3 configuration |
+| `GET /api/v1/reports/{id}` | Check report access and return report details, `createdAt`, a signed media URL, and debugger processing status. `reporter` (the reporter's email) and `workspaceId` are returned only to signed-in members of the report's workspace and are `null` for public and share-link viewers. The response also includes `visibility` and `canManage`, which is `true` only for workspace owners, admins, and the reporter, who may change visibility with `PATCH /api/v1/reports/{id}`. A viewer with access can fetch media while debugger processing is pending. | Implemented with S3 configuration |
 
 ## Debugger read endpoints
 
@@ -36,12 +36,19 @@ These routes cover workspace setup, signed-in capture, report management, and sh
 | Workspaces | `GET /api/v1/workspaces`, `POST /api/v1/workspaces` | List memberships and create a workspace. |
 | Workspaces | `PUT /api/v1/session/workspace` | Set the active workspace after checking membership. |
 | Workspaces | `GET /api/v1/workspaces/{id}/members`, `POST /api/v1/workspaces/{id}/invitations`, `POST /api/v1/invitations/{token}/accept` | List members and let teammates join a workspace so they can open private reports. |
+| Workspaces | `GET /api/v1/workspaces/{id}/invitations`, `DELETE /api/v1/workspaces/{id}/invitations/{invitation_id}` | List a workspace's pending invitations (id, email, expiry) or revoke one. Owners and admins only. The invite token itself is shown only when the invitation is created, so a lost link is replaced by revoking the invitation and creating a new one. |
+| Workspaces | `PATCH /api/v1/workspaces/{id}` | Owners and admins rename the workspace with `{"name":"…"}` and set the visibility of new reports with `{"defaultVisibility":"restricted"}` (`restricted`, `private`, or `public`). The list endpoint returns `defaultVisibility`. Captures that do not ask for a visibility use it. |
+| Workspaces | `PATCH /api/v1/workspaces/{id}/members/{user_id}` with `{"role":"admin"}` | Owners change a member's role to `admin` or `member`. An owner's role cannot be changed. |
+| Workspaces | `POST /api/v1/workspaces/{id}/leave`, `DELETE /api/v1/workspaces/{id}` | Admins and members leave a workspace. Owners cannot leave. They delete it once it has no reports left, which also removes its members, invitations, and capture keys. |
 | Workspaces | `DELETE /api/v1/workspaces/{id}/members/{user_id}` | Remove a member. Owners can remove anyone except an owner, and admins can remove regular members only. The removed user's sessions lose the active workspace. |
 | Capture keys | `GET /api/v1/workspaces/{id}/capture-keys`, `POST /api/v1/workspaces/{id}/capture-keys` | List or issue a key for authorized workspace admins. |
 | Capture keys | `PATCH /api/v1/workspaces/{id}/capture-keys/{key_id}`, `DELETE /api/v1/workspaces/{id}/capture-keys/{key_id}` | Update allowed origins or revoke a key. |
 | Extension capture | `POST /api/v1/captures/upload-sessions`, `POST /api/v1/captures/{id}/finalize` | Let a signed-in extension reuse upload and finalization logic with workspace session authorization. |
 | Reports | `GET /api/v1/reports` | List reports in an authorized workspace. Each item includes `previewUrl`, a signed media URL valid for five minutes (`null` when storage is not configured), used for list thumbnails and hover previews. Each item also has `canManage`, `true` when the caller may change that report. |
 | Reports | `PATCH /api/v1/reports/{id}`, `DELETE /api/v1/reports/{id}` | Update report metadata or visibility, or delete a report and queue artifact cleanup. |
+| Sharing | `GET /api/v1/reports/{id}/access`, `POST /api/v1/reports/{id}/access` with `{"userId":"<id>"}`, `DELETE /api/v1/reports/{id}/access/{user_id}` | Read, add, or remove the workspace members a report is shared with. Only owners, admins, and the reporter may use these. Only members of the report's workspace can be added. |
+| Comments | `GET /api/v1/reports/{id}/comments`, `POST /api/v1/reports/{id}/comments`, `DELETE /api/v1/reports/{id}/comments/{comment_id}` | Read, add, or delete comments on a report. Only signed-in members of the report's workspace who can open the report may use them, so public and share-link viewers never see comments. Post `{"body":"…","offsetMs":12000,"mentions":["<userId>"]}`: `offsetMs` is an optional position in the recording and `mentions` lists workspace members, any others are dropped. The list is oldest first and takes `limit` and `cursor`. Authors can delete their own comments, and workspace owners and admins can delete any. |
+| Agents | `GET /api/v1/tokens`, `POST /api/v1/tokens`, `DELETE /api/v1/tokens/{id}` | List, create, or revoke personal access tokens for MCP agents. These routes need a signed-in session, so a token cannot manage tokens. |
 | Sharing | `POST /api/v1/reports/{id}/share-links`, `DELETE /api/v1/reports/{id}/share-links/{link_id}` | Issue or revoke a link independently of the report. |
 
 ### Request contracts
@@ -51,14 +58,15 @@ These routes cover workspace setup, signed-in capture, report management, and sh
 - Create or patch a capture key with `{"allowedOrigins":["https://app.example.com"]}`. Save the plaintext key from the create response. The embed client supplies it in `X-Crikket-Public-Key` alongside the browser `Origin`. The token issued by the embed API goes in `X-Crikket-Capture-Token` for upload-session creation and `X-Crikket-Capture-Finalize-Token` for finalization.
 - Start an extension upload with `{"attachmentType":"screenshot","captureContentType":"image/png","hasDebuggerPayload":true}`. Include an `Idempotency-Key` to reuse the draft with the same payload. The response includes `bugReportId`, `captureUpload`, and an optional `debuggerUpload`. PUT the objects to the signed URLs with the supplied headers. Finalize by ID with an optional `{"debuggerContentEncoding":"gzip"}` JSON body. Uncompressed debugger JSON uses `identity`. The embed finalize body also includes the draft `id`.
 - List reports in the active workspace. The report, events, and network list endpoints accept `limit` and `cursor` and return `items` and `nextCursor`. Pass the returned cursor unchanged. Use an event's `id` from the network list as `request_id` in the detail route.
-- Patch a report with one or more of `title`, `description`, and `visibility` (`public` or `private`). Workspace owners, admins, and the signed-in reporter can manage it. Create a share link with `{}` for the seven-day default or set `expiresInSeconds` from 60 seconds to 30 days. Send `X-Zapp-Share-Token: <token>` to read a report or debugger data using the link. Revocation blocks new playback URLs issued through that token. URLs already issued expire after five minutes.
+- Patch a report with one or more of `title`, `description`, and `visibility`. `private` lets every workspace member open the report, `restricted` limits it to the reporter, workspace owners and admins, and the members it was shared with, and `public` lets anyone with the link open it. Restricted reports are also hidden from other members' report lists and from MCP.
+- Workspace owners, admins, and the signed-in reporter can manage a report. Create a share link with `{}` for the seven-day default or set `expiresInSeconds` from 60 seconds to 30 days. Send `X-Zapp-Share-Token: <token>` to read a report or debugger data using the link. Revocation blocks new playback URLs issued through that token. URLs already issued expire after five minutes.
 
 ## Bug report MCP
 
 Connect an MCP client with configurable HTTP headers to `http://127.0.0.1:8080/mcp`. The endpoint uses Streamable HTTP with JSON responses and negotiates version `2025-11-25`. [MCP transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 
-1. Sign in with the Zapp account through `POST /api/v1/auth/login`.
-2. Set `Authorization: Bearer <token>` in the MCP client's connection settings using the token returned by login. The token expires after 24 hours and is revoked on logout. Sign in again to renew it. Keep the token in the client's secret storage.
+1. Create a personal access token under **Settings → Agents & MCP** in the web app, or with `POST /api/v1/tokens` while signed in (`{"name":"Claude Code","expiresInDays":90}`; omit `expiresInDays` for a token that does not expire). The response contains the `zk_…` secret once. Zapp stores only its hash. List tokens with `GET /api/v1/tokens` and revoke one with `DELETE /api/v1/tokens/{id}`. A user can hold 20 tokens.
+2. Set `Authorization: Bearer <token>` in the MCP client's connection settings. A personal access token works only on `/mcp`, where every tool is read-only, and acts as the user who created it. A browser session token from `POST /api/v1/auth/login` also works on `/mcp`; it expires after 24 hours. Keep tokens in the client's secret storage.
 3. Use `tools/list` to discover the read-only tools. The endpoint currently uses manual bearer-token configuration. OAuth login and discovery are pending.
 
 | Tool | Arguments | Result |
@@ -74,7 +82,7 @@ List tools default to 25 items and allow up to 100. Reuse the returned `nextCurs
 
 From `zapp/`, copy the [runtime environment template](../.env.example) to `.env` and run `docker compose up --build -d`. Compose initializes a local MongoDB replica set, runs the Rust migration command, and starts the server after migration succeeds. Check `http://127.0.0.1:8080/readyz`. To rerun the migration with the current source, run `docker compose build migrate` followed by `docker compose run --rm migrate`. The Compose database is for local development and uses a loopback port.
 
-Migration `001_capture` creates the baseline collections and indexes. Migration `002_mvp_endpoints` adds workspace invitations, authentication attempt limits, artifact cleanup, and network detail storage. Capture keys and tokens are stored as hashes. Capture tokens expire and are scoped to the issuing key and origin.
+Migration `001_capture` creates the baseline collections and indexes. Migration `002_mvp_endpoints` adds workspace invitations, authentication attempt limits, artifact cleanup, and network detail storage. Migration `003_comments` adds report comments and allows the `restricted` report visibility. Capture keys and tokens are stored as hashes. Capture tokens expire and are scoped to the issuing key and origin.
 
 ### Connect to MongoDB Atlas
 
