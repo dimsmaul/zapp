@@ -1,10 +1,11 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { Camera, FolderOpen, Video } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useSession } from "@/features/auth/session";
@@ -27,10 +28,9 @@ export function ReportsPage() {
   const items = reports.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 p-6">
+    <section className="grid w-full gap-6 p-4 sm:p-6 lg:p-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Reports</h1>
-        <Button asChild variant="outline"><Link to="/workspaces">Workspaces</Link></Button>
       </header>
       {reports.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(reports.error)}</AlertDescription></Alert>}
       <Card>
@@ -38,7 +38,7 @@ export function ReportsPage() {
         <CardContent>
           {reports.isPending && <Spinner aria-label="Loading reports" />}
           {reports.isSuccess && items.length === 0 && (
-            <Empty><EmptyHeader><EmptyTitle>No reports yet</EmptyTitle><EmptyDescription>Capture a screenshot or recording with the Zapp extension.</EmptyDescription></EmptyHeader></Empty>
+            <Empty><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyTitle>No reports yet</EmptyTitle><EmptyDescription>Capture a screenshot or recording with the Zapp extension.</EmptyDescription></EmptyHeader></Empty>
           )}
           {items.length > 0 && (
             <Table>
@@ -49,7 +49,11 @@ export function ReportsPage() {
                 {items.map((report) => (
                   <TableRow key={report.id}>
                     <TableCell><Button asChild variant="link"><Link to="/s/$id" params={{ id: report.id }}>{report.title || "Untitled report"}</Link></Button></TableCell>
-                    <TableCell>{report.attachmentType === "screenshot" ? "Screenshot" : "Recording"}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        {report.attachmentType === "screenshot" ? <><Camera size={16} /> Screenshot</> : <><Video size={16} /> Recording</>}
+                      </span>
+                    </TableCell>
                     <TableCell><Badge variant="secondary">{report.visibility}</Badge></TableCell>
                     <TableCell>{report.createdAt && dateFormat.format(new Date(report.createdAt))}</TableCell>
                   </TableRow>
@@ -64,6 +68,6 @@ export function ReportsPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </section>
   );
 }

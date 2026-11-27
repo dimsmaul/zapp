@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
+import { Plus } from "lucide-react";
 import type { FormEvent } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -8,14 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { logout } from "@/features/auth/api";
 import { useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
 import { createWorkspace, listWorkspaces, selectWorkspace } from "./api";
 
 export function WorkspacesPage() {
   const session = useSession((state) => state.session);
-  const setSession = useSession((state) => state.setSession);
   const setWorkspace = useSession((state) => state.selectWorkspace);
   const token = session?.token ?? "";
   const queryClient = useQueryClient();
@@ -26,14 +25,6 @@ export function WorkspacesPage() {
     queryFn: ({ signal }) => listWorkspaces(token, signal),
     enabled: Boolean(token),
     retry: false,
-  });
-  const signOut = useMutation({
-    mutationFn: () => logout(token),
-    onSettled: async () => {
-      queryClient.clear();
-      setSession(null);
-      await navigate({ to: "/login", replace: true });
-    },
   });
   const select = useMutation({
     mutationFn: (id: string) => selectWorkspace(token, id),
@@ -50,7 +41,7 @@ export function WorkspacesPage() {
     },
   });
   const error = select.error ?? create.error ?? workspaces.error;
-  const pending = create.isPending || select.isPending || signOut.isPending;
+  const pending = create.isPending || select.isPending;
   const signInAgain = error instanceof ApiError && error.status === 401;
 
   function addWorkspace(event: FormEvent<HTMLFormElement>) {
@@ -61,13 +52,9 @@ export function WorkspacesPage() {
   }
 
   return (
-    <main className="mx-auto grid max-w-3xl gap-6 p-6">
+    <section className="grid w-full max-w-5xl gap-6 p-4 sm:p-6 lg:p-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Workspaces</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          {session?.workspaceId && <Button asChild variant="outline"><Link to="/reports">Reports</Link></Button>}
-          <Button variant="ghost" disabled={pending} onClick={() => signOut.mutate()}>Sign out</Button>
-        </div>
       </header>
       {error && <Alert variant="destructive"><AlertDescription>{signInAgain ? "Your session has expired. Sign in again." : errorMessage(error)}</AlertDescription></Alert>}
       <Card>
@@ -98,10 +85,10 @@ export function WorkspacesPage() {
               <FieldLabel htmlFor="workspace-name">Workspace name</FieldLabel>
               <Input id="workspace-name" name="name" maxLength={50} required />
             </Field>
-            <Button type="submit" disabled={pending || signInAgain}>Create workspace</Button>
+            <Button type="submit" disabled={pending || signInAgain}><Plus />Create workspace</Button>
           </form>
         </CardContent>
       </Card>
-    </main>
+    </section>
   );
 }

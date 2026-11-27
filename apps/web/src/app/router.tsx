@@ -42,6 +42,7 @@ const login = createRoute({
 const signedIn = createRoute({
   getParentRoute: () => root,
   id: "signed-in",
+  component: lazyRouteComponent(() => import("./workspace-layout"), "WorkspaceLayout"),
   beforeLoad: () => {
     if (!isActive(useSession.getState().session)) throw redirect({ to: "/login" });
   },
