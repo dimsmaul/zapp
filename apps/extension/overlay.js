@@ -30,11 +30,11 @@
     const styles = new CSSStyleSheet()
     styles.replaceSync(`
         :host { color-scheme: light; }
-        .pill { display:flex; align-items:center; gap:7px; padding:5px 6px; color:#fff; background:#18181b; border:1px solid #3f3f46; border-radius:999px; box-shadow:0 5px 20px #0004; font:500 13px/1.3 system-ui; }
+        .pill { display:flex; align-items:center; gap:8px; padding:6px 8px; color:#fff; background:rgb(0 0 0 / 70%); backdrop-filter:blur(10px); border:1px solid rgb(255 255 255 / 12%); border-radius:999px; box-shadow:0 8px 28px #0005; font:500 13px/1.3 system-ui; }
         .dot { width:8px; height:8px; border-radius:50%; background:#f87171; }
         .paused .dot { background:#a1a1aa; }
-        button { padding:6px 8px; border:0; border-radius:999px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
-        button:hover { background:#3f3f46; }
+        button { padding:6px 12px; border:0; border-radius:999px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+        button:hover { background:rgb(255 255 255 / 18%); }
         button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
         time { font-variant-numeric:tabular-nums; min-width:36px; }
         .move { cursor:grab; touch-action:none; color:#d4d4d8; }

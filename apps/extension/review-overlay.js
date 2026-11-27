@@ -12,12 +12,19 @@
     const shadow = host.attachShadow({ mode: 'closed' })
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(`
-      dialog { box-sizing: border-box; width: min(96vw, 1440px); height: min(92dvh, 1000px); max-width: none; max-height: none; padding: 0; margin: auto; overflow: hidden; border: 1px solid #d4d4d8; border-radius: 16px; background: #fafafa; color: #18181b; box-shadow: 0 24px 64px #0004; font: 14px/1.5 system-ui; }
+      dialog { box-sizing: border-box; width: min(96vw, 1440px); height: min(92dvh, 1000px); max-width: none; max-height: none; padding: 0; margin: auto; overflow: hidden; border: 1px solid oklch(0.922 0 0); border-radius: 20px; background: oklch(1 0 0); color: oklch(0.145 0 0); color-scheme: light dark; box-shadow: 0 24px 64px #0004; font: 14px/1.5 system-ui; }
       dialog[open] { display: flex; flex-direction: column; }
-      dialog::backdrop { background: #18181bb3; }
-      header { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; border-bottom: 1px solid #e4e4e7; }
-      button { border: 1px solid #e4e4e7; border-radius: 8px; padding: 6px 12px; background: white; color: inherit; font: inherit; cursor: pointer; }
-      button:focus-visible { outline: 2px solid #52525b; outline-offset: 2px; }
+      dialog::backdrop { background: oklch(0.145 0 0 / 70%); backdrop-filter: blur(2px); }
+      header { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid oklch(0.922 0 0); }
+      button { border: 1px solid oklch(0.922 0 0); border-radius: 12px; padding: 6px 14px; background: oklch(1 0 0); color: inherit; font: inherit; cursor: pointer; }
+      button:hover { background: oklch(0.97 0 0); }
+      button:focus-visible { outline: 2px solid oklch(0.601 0.187 277.8); outline-offset: 2px; }
+      @media (prefers-color-scheme: dark) {
+        dialog { border-color: oklch(1 0 0 / 12%); background: oklch(0.145 0 0); color: oklch(0.985 0 0); }
+        header { border-bottom-color: oklch(1 0 0 / 12%); }
+        button { border-color: oklch(1 0 0 / 12%); background: oklch(0.205 0 0); }
+        button:hover { background: oklch(0.269 0 0); }
+      }
       iframe { width: 100%; min-height: 0; flex: 1; border: 0; }
       p { margin: 1rem; }
     `)
