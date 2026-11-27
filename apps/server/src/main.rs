@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use zapp_backend::adapter::{http, mongo, s3::Storage};
+use zapp_backend::feature::debugger;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -11,6 +12,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Some("migrate") => {
             mongo::migrate(&database).await?;
             println!("Applied Zapp schema {}", mongo::SCHEMA_VERSION);
+            return Ok(());
+        }
+        Some("worker") => {
+            let storage = Storage::from_env()?.ok_or("Configure object storage before starting the worker")?;
+            debugger::run(database, storage).await?;
             return Ok(());
         }
         Some(command) => return Err(format!("Unknown command: {command}").into()),

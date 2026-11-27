@@ -15,7 +15,7 @@ pub(crate) use error::ApiError;
 
 use crate::{
     adapter::{mongo, s3::Storage},
-    feature::{auth, capture, reports, workspaces},
+    feature::{auth, capture, debugger, reports, workspaces},
 };
 
 #[derive(Clone)]
@@ -48,6 +48,7 @@ pub fn router_with_storage(db: Database, storage: Option<Storage>) -> Router {
                 .merge(workspaces::router())
                 .merge(capture::member_router())
                 .merge(reports::router())
+                .merge(debugger::router())
                 .layer(
                     CorsLayer::new()
                         .allow_origin(AllowOrigin::mirror_request())
