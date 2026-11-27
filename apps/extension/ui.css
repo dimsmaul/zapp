@@ -65,6 +65,7 @@ input, select, textarea { min-width: 0; width: 100%; }
 .ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .brand h1 { margin-right: auto; }
+.beta-badge { padding: 2px 6px; border-radius: 4px; background: var(--muted-bg); font-size: 10px; font-weight: 600; text-transform: uppercase; }
 .logo { width: 30px; height: 30px; flex: none; }
 .popup { width: 350px; padding: 18px; }
 html[data-embedded="true"] .popup { width: auto; }

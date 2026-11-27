@@ -32,7 +32,8 @@ pub fn router(db: Database) -> Router {
 pub async fn serve(addr: SocketAddr, db: Database, storage: Option<Storage>) -> io::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     println!(
-        "Zapp backend listening on http://{}",
+        "Zapp backend {} listening on http://{}",
+        std::env::var("ZAPP_VERSION").unwrap_or_else(|_| "dev".into()),
         listener.local_addr()?
     );
     axum::serve(listener, router_with_storage(db, storage)).await

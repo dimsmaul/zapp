@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/server } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: apps/server }
+      - run: cargo test --locked
+
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+  extension:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/extension } }
+    steps:
+      - uses: actions/checkout@v4
+      - run: for f in *.js; do node --check "$f"; done
+      - run: jq . manifest.json > /dev/null

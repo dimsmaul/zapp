@@ -6,6 +6,8 @@ RUN cargo build --locked --release
 
 FROM debian:bookworm-slim
 COPY --from=build /app/target/release/zapp-backend /usr/local/bin/zapp-backend
+ARG VERSION=dev
+ENV ZAPP_VERSION=$VERSION
 ENV ZAPP_BIND_ADDR=0.0.0.0:8080
 USER 65532:65532
 EXPOSE 8080

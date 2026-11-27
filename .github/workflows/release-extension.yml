@@ -1,0 +1,47 @@
+name: Release extension
+
+# Tag extension-vX.Y.Z        -> zapp-extension-X.Y.Z.zip on a GitHub release.
+# Tag extension-vX.Y.Z-beta.N -> zapp-extension-X.Y.Z-beta.N.zip on a pre-release; the extension is
+#                                named "Zapp Beta" and its popup shows a Beta badge.
+# Chrome only accepts numeric versions, so the beta number goes in version_name and the manifest
+# version stays X.Y.Z. Upload stable zips to the Web Store; beta zips are for manual install.
+on:
+  push:
+    tags: ["extension-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp manifest and zip
+        id: v
+        run: |
+          version="${GITHUB_REF_NAME#extension-v}"
+          base="${version%%-*}"
+          cd apps/extension
+          if [[ "$version" == *-* ]]; then
+            beta=true
+            jq --arg v "$base" --arg n "$version" '.version=$v | .version_name=$n | .name="Zapp Beta"' manifest.json > manifest.tmp
+          else
+            beta=false
+            jq --arg v "$base" '.version=$v | .version_name=$v' manifest.json > manifest.tmp
+          fi
+          mv manifest.tmp manifest.json
+          cat manifest.json | jq '{name,version,version_name}'
+          zip -r "../../zapp-extension-$version.zip" . -x '*.DS_Store'
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "beta=$beta" >> "$GITHUB_OUTPUT"
+
+      - name: GitHub release
+        run: |
+          flags=()
+          [[ "${{ steps.v.outputs.beta }}" == true ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "zapp-extension-${{ steps.v.outputs.version }}.zip" \
+            --title "Extension ${{ steps.v.outputs.version }}" --generate-notes "${flags[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}

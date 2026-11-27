@@ -3,6 +3,8 @@ WORKDIR /app
 COPY apps/web/package.json apps/web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY apps/web/ ./
+ARG VITE_ZAPP_VERSION=dev
+ENV VITE_ZAPP_VERSION=$VITE_ZAPP_VERSION
 RUN bun run build
 
 FROM nginx:stable-alpine

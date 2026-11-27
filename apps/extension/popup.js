@@ -4,6 +4,14 @@ import { draftIds } from './store.js'
 
 hydrate()
 
+// Beta builds get version_name "X.Y.Z-beta.N" from the release workflow.
+const versionName = chrome.runtime.getManifest().version_name ?? ''
+if (versionName.includes('-beta')) {
+  const badge = document.getElementById('beta-badge')
+  badge.hidden = false
+  badge.title = versionName
+}
+
 const $ = (id) => document.getElementById(id)
 const screens = ['connect', 'login', 'workspace', 'capture', 'recording']
 

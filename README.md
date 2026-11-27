@@ -130,7 +130,7 @@ Use a throwaway database for these. The tests write to the MongoDB at `ZAPP_TEST
 
 ### Server on an Oracle VM (GitHub Actions)
 
-`.github/workflows/deploy-server.yml` builds the backend image on GitHub, copies it to your VM over SSH, and restarts the stack with `deploy/docker-compose.prod.yml`. It runs on pushes to `main` that touch `apps/server`, `deploy`, or the workflow itself, and can be started by hand from the Actions tab. No container registry is needed.
+`.github/workflows/release-server.yml` runs when you push a stable `server-vX.Y.Z` tag. It builds the backend image, pushes it to GHCR, copies it to your VM over SSH, and restarts the stack with `deploy/docker-compose.prod.yml`. Beta tags (`server-vX.Y.Z-beta.N`) only publish the image. See [docs/releasing.md](docs/releasing.md) for all three tag types (server, web, extension) and pre-releases.
 
 **One-time setup on the VM**
 

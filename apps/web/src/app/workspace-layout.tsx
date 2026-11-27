@@ -39,6 +39,7 @@ import { logout } from "@/features/auth/api";
 import { useSession } from "@/features/auth/session";
 import { createWorkspace, listWorkspaces, selectWorkspace } from "@/features/workspaces/api";
 import { errorMessage } from "@/lib/api";
+import { IS_BETA, VERSION } from "@/lib/version";
 import { type Theme, setTheme, useTheme } from "@/lib/theme";
 
 // Labels fade out while the sidebar narrows and are clipped by the button, instead of popping out of
@@ -114,6 +115,7 @@ function WorkspaceNavigation() {
                   <SidebarMenuButton size="lg" tooltip="Switch workspace" aria-label="Switch workspace">
                     <img src="/logo.svg" alt="" className="size-8 shrink-0" />
                     <span className={`${label} min-w-0 flex-1 truncate`}>{active?.name ?? "Select workspace"}</span>
+                    {IS_BETA ? <span className={`${label} rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase`} title={VERSION}>Beta</span> : null}
                     <ChevronsUpDown className={label} />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
