@@ -52,6 +52,20 @@ pub(super) async fn members(State(state): State<AppState>, session: Session, Pat
     Ok(Json(json!({ "items": repository::members(&state.db, &id).await? })))
 }
 
+/// Owners can remove anyone but an owner. Admins can remove regular members only.
+pub(super) async fn remove_member(State(state): State<AppState>, session: Session, Path((id, user)): Path<(String, String)>) -> Result<StatusCode, ApiError> {
+    let actor = repository::membership(&state.db, &session.user_id, &id).await?.ok_or(ApiError::NOT_FOUND)?;
+    if !matches!(actor.as_str(), "owner" | "admin") {
+        return Err(ApiError::FORBIDDEN);
+    }
+    let target = repository::membership(&state.db, &user, &id).await?.ok_or(ApiError::NOT_FOUND)?;
+    if target == "owner" || (target == "admin" && actor != "owner") {
+        return Err(ApiError::FORBIDDEN);
+    }
+    repository::remove_member(&state.db, &id, &user).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(super) async fn invite(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<InviteInput>) -> Result<impl IntoResponse, ApiError> {
     repository::require_admin(&state.db, &session.user_id, &id).await?;
     let email = normalize_email(&input.email).ok_or(ApiError::invalid("Enter a valid email address."))?;

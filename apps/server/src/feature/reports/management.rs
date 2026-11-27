@@ -39,8 +39,24 @@ pub(super) async fn list(State(state): State<AppState>, session: Session, Query(
     let next = reports.last().filter(|_| has_more).and_then(|report| {
         Some(format!("{}:{}", report.get_datetime("createdAt").ok()?.timestamp_millis(), report.get_str("_id").ok()?))
     });
-    let items: Vec<_> = reports.iter().map(summary).collect();
+    let user = session.user_id.as_str();
+    let admin = matches!(membership(&state.db, user, workspace).await?.as_deref(), Some("owner" | "admin"));
+    let mut items = Vec::with_capacity(reports.len());
+    for report in &reports {
+        let mut item = summary(report);
+        item["previewUrl"] = json!(preview_url(&state, report).await);
+        // Mirrors `manage_filter`: owners, admins, and the reporter may change a report.
+        item["canManage"] = json!(admin || report.get_str("reporterId") == Ok(user));
+        items.push(item);
+    }
     Ok(Json(json!({ "items": items, "nextCursor": next })))
+}
+
+/// A short-lived signed URL the report list uses for hover previews. Signing is computed locally,
+/// so listing stays cheap. `None` when storage is not configured.
+async fn preview_url(state: &AppState, report: &Document) -> Option<String> {
+    let key = report.get_document("media").ok()?.get_str("objectKey").ok()?;
+    state.storage.as_ref()?.sign_playback(key).await.ok()
 }
 
 pub(super) async fn update(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<Update>) -> Result<Json<Value>, ApiError> {

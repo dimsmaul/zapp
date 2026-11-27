@@ -323,6 +323,7 @@ async fn finalize_reuses_report_and_protects_published_media() {
     assert_eq!(report["debuggerStatus"], "pending");
     assert!(report["createdAt"].is_string());
     assert!(report["reporter"].is_null(), "share-link viewers must not see the reporter");
+    assert_eq!(report["canManage"], false, "share-link viewers cannot change visibility");
     let playback = http
         .get(report["attachmentUrl"].as_str().unwrap())
         .send()

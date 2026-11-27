@@ -13,7 +13,7 @@ The first backend milestone lets a reporter capture a bug, upload the recording 
 | `POST /api/embed/capture-token` | Validate the widget key and origin and issue a short-lived capture token. | Implemented |
 | `POST /api/embed/bug-report-upload-session` | Create or reuse a draft and return signed URLs for direct uploads to object storage. | Implemented with S3 configuration |
 | `POST /api/embed/bug-report-finalize` | Verify and publish the media, save the report, and return its share URL. Queue debugger processing durably and make repeated finalization return the same report. | Implemented with S3 configuration |
-| `GET /api/v1/reports/{id}` | Check report access and return report details, `createdAt`, a signed media URL, and debugger processing status. `reporter` (the reporter's email) is returned only to signed-in members of the report's workspace and is `null` for public and share-link viewers. A viewer with access can fetch media while debugger processing is pending. | Implemented with S3 configuration |
+| `GET /api/v1/reports/{id}` | Check report access and return report details, `createdAt`, a signed media URL, and debugger processing status. `reporter` (the reporter's email) is returned only to signed-in members of the report's workspace and is `null` for public and share-link viewers. The response also includes `visibility` and `canManage`, which is `true` only for workspace owners, admins, and the reporter, who may change visibility with `PATCH /api/v1/reports/{id}`. A viewer with access can fetch media while debugger processing is pending. | Implemented with S3 configuration |
 
 ## Debugger read endpoints
 
@@ -36,10 +36,11 @@ These routes cover workspace setup, signed-in capture, report management, and sh
 | Workspaces | `GET /api/v1/workspaces`, `POST /api/v1/workspaces` | List memberships and create a workspace. |
 | Workspaces | `PUT /api/v1/session/workspace` | Set the active workspace after checking membership. |
 | Workspaces | `GET /api/v1/workspaces/{id}/members`, `POST /api/v1/workspaces/{id}/invitations`, `POST /api/v1/invitations/{token}/accept` | List members and let teammates join a workspace so they can open private reports. |
+| Workspaces | `DELETE /api/v1/workspaces/{id}/members/{user_id}` | Remove a member. Owners can remove anyone except an owner, and admins can remove regular members only. The removed user's sessions lose the active workspace. |
 | Capture keys | `GET /api/v1/workspaces/{id}/capture-keys`, `POST /api/v1/workspaces/{id}/capture-keys` | List or issue a key for authorized workspace admins. |
 | Capture keys | `PATCH /api/v1/workspaces/{id}/capture-keys/{key_id}`, `DELETE /api/v1/workspaces/{id}/capture-keys/{key_id}` | Update allowed origins or revoke a key. |
 | Extension capture | `POST /api/v1/captures/upload-sessions`, `POST /api/v1/captures/{id}/finalize` | Let a signed-in extension reuse upload and finalization logic with workspace session authorization. |
-| Reports | `GET /api/v1/reports` | List reports in an authorized workspace. |
+| Reports | `GET /api/v1/reports` | List reports in an authorized workspace. Each item includes `previewUrl`, a signed media URL valid for five minutes (`null` when storage is not configured), used for list thumbnails and hover previews. Each item also has `canManage`, `true` when the caller may change that report. |
 | Reports | `PATCH /api/v1/reports/{id}`, `DELETE /api/v1/reports/{id}` | Update report metadata or visibility, or delete a report and queue artifact cleanup. |
 | Sharing | `POST /api/v1/reports/{id}/share-links`, `DELETE /api/v1/reports/{id}/share-links/{link_id}` | Issue or revoke a link independently of the report. |
 

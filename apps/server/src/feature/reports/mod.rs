@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use crate::{
     adapter::http::{ApiError, AppState},
     capture::credential_hash,
-    feature::auth::bearer_token,
+    feature::{auth::bearer_token, workspaces::membership},
 };
 
 pub(crate) fn router() -> Router<AppState> {
@@ -83,7 +83,7 @@ pub(crate) async fn read_report(
         .sign_playback(key)
         .await
         .map_err(|_| STORAGE_UNAVAILABLE)?;
-    let reporter = reporter_for_member(&state.db, &headers, &report).await?;
+    let member = member_view(&state.db, &headers, &report).await?;
     Ok((
         [(header::CACHE_CONTROL, "private, no-store")],
         Json(json!({
@@ -93,31 +93,43 @@ pub(crate) async fn read_report(
             "attachmentUrl": url, "captureContentType": media.get_str("contentType").ok(),
             "debuggerStatus": report.get_str("debuggerStatus").ok(),
             "createdAt": report.get_datetime("createdAt").ok().and_then(|date| date.try_to_rfc3339_string().ok()),
-            "reporter": reporter,
+            "reporter": member.reporter, "visibility": report.get_str("visibility").ok(),
+            "canManage": member.can_manage,
         })),
     ))
 }
 
-/// The reporter's email, shown only to signed-in members of the report's workspace
-/// so public and share-link viewers never learn who filed the report.
-async fn reporter_for_member(db: &Database, headers: &HeaderMap, report: &Document) -> Result<Option<String>, ApiError> {
-    let (Some(raw), Ok(workspace), Ok(reporter)) =
-        (bearer_token(headers), report.get_str("workspaceId"), report.get_str("reporterId"))
-    else {
-        return Ok(None);
+/// What a signed-in workspace member may see beyond the public report.
+struct MemberView {
+    /// The reporter's email. Public and share-link viewers never learn who filed the report.
+    reporter: Option<String>,
+    /// Owners, admins, and the reporter can change the report's visibility.
+    can_manage: bool,
+}
+
+async fn member_view(db: &Database, headers: &HeaderMap, report: &Document) -> Result<MemberView, ApiError> {
+    let outsider = MemberView { reporter: None, can_manage: false };
+    let (Some(raw), Ok(workspace)) = (bearer_token(headers), report.get_str("workspaceId")) else {
+        return Ok(outsider);
     };
     let session = db
         .collection::<Document>("user_sessions")
         .find_one(doc! { "_id": credential_hash(raw), "expiresAt": { "$gt": DateTime::now() } })
         .await?;
     let Some(viewer) = session.as_ref().and_then(|session| session.get_str("userId").ok()) else {
-        return Ok(None);
+        return Ok(outsider);
     };
-    if !has_membership(db, workspace, viewer).await? {
-        return Ok(None);
-    }
-    let user = db.collection::<Document>("users").find_one(doc! { "_id": reporter }).await?;
-    Ok(user.and_then(|user| user.get_str("email").ok().map(str::to_owned)))
+    let Some(role) = membership(db, viewer, workspace).await? else {
+        return Ok(outsider);
+    };
+    let reporter_id = report.get_str("reporterId").ok();
+    let can_manage = matches!(role.as_str(), "owner" | "admin") || reporter_id == Some(viewer);
+    let reporter = match reporter_id {
+        Some(reporter) => db.collection::<Document>("users").find_one(doc! { "_id": reporter }).await?
+            .and_then(|user| user.get_str("email").ok().map(str::to_owned)),
+        None => None,
+    };
+    Ok(MemberView { reporter, can_manage })
 }
 
 pub(crate) async fn visible_report(db: &Database, headers: &HeaderMap, id: &str) -> Result<Document, ApiError> {

@@ -70,6 +70,17 @@ pub(super) async fn members(db: &Database, workspace: &str) -> Result<Vec<Docume
     Ok(members)
 }
 
+pub(super) async fn remove_member(db: &Database, workspace: &str, user: &str) -> Result<(), ApiError> {
+    db.collection::<Document>("workspace_members")
+        .delete_one(doc! { "workspaceId": workspace, "userId": user }).await?;
+    // Sessions that had this workspace selected must pick another one.
+    db.collection::<Document>("user_sessions").update_many(
+        doc! { "userId": user, "activeWorkspaceId": workspace },
+        doc! { "$unset": { "activeWorkspaceId": "" } },
+    ).await?;
+    Ok(())
+}
+
 pub(super) async fn accept(db: &Database, user: &str, token_hash: String) -> Result<Option<String>, ApiError> {
     let mut tx = db.client().start_session().await?;
     let result = tx.start_transaction().and_run(
