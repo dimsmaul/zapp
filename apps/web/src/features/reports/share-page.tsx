@@ -4,22 +4,23 @@ import { Check, ChevronDown, Home, LayoutGrid, Link2, LocateFixed, Search, Setti
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
+import { EventRowsSkeleton, ReportPageSkeleton } from "@/components/skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isActive, useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
-import { timeAgo } from "@/lib/time";
-import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, getNetworkRequest, getReport, listEvents, updateVisibility } from "./api";
+import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, getNetworkRequest, getReport, listEvents, updateDetails, updateVisibility } from "./api";
 import { type EventRow, EventTable } from "./event-table";
-import { Comments } from "./comments";
+import { Comments, commentTimes, useComments } from "./comments";
 import { NetworkInspector } from "./network-inspector";
 import { ShareDialog } from "./share-dialog";
 import { visibilityOptions } from "./visibility";
 import { type NetworkRow, NetworkTable } from "./network-table";
-import { ReportPlayer, seekVideo } from "./player";
+import { type Marker, ReportPlayer, seekVideo } from "./player";
+import { ReportHeading } from "./report-heading";
 
 const route = getRouteApi("/s/$id");
 
@@ -38,6 +39,10 @@ function describe(event: TimelineEvent) {
     ? [data.method, data.status, data.url ?? data.topic ?? data.eventName]
     : [data.level, data.message ?? data.targetLabel];
   return fields.filter((value) => typeof value === "string" || typeof value === "number").join(" ") || event.kind;
+}
+
+function isConsoleError(event: TimelineEvent) {
+  return event.category === "console" && event.data?.level === "error";
 }
 
 function isNetworkError(event: TimelineEvent) {
@@ -155,6 +160,13 @@ export function SharePage() {
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
   const [sharing, setSharing] = useState(false);
   const queryClient = useQueryClient();
+  const saveDetails = useMutation({
+    mutationFn: (changes: { title: string; description: string }) => updateDetails(token!, id, changes),
+    onSuccess: async (result) => {
+      queryClient.setQueryData<PlaybackReport>(accessKey, (old) => old && { ...old, title: result.title, description: result.description });
+      await queryClient.invalidateQueries({ queryKey: ["reports"] });
+    },
+  });
   const setVisibility = useMutation({
     mutationFn: (value: Visibility) => updateVisibility(token!, id, value),
     // Patch only the cached visibility; refetching would re-sign the media URL and restart the player.
@@ -169,6 +181,7 @@ export function SharePage() {
     refetchOnReconnect: false,
     retry: false,
   });
+  const commentsQuery = useComments(token ?? "", id, Boolean(token && report.data?.workspaceId));
   const events = useInfiniteQuery({
     queryKey: [...accessKey, eventView],
     queryFn: ({ pageParam, signal }) => listEvents(id, eventView, access, pageParam, signal),
@@ -200,15 +213,24 @@ export function SharePage() {
     if (view === "network" && typeFilter !== "all" && resourceGroup(event) !== typeFilter) return false;
     return !term || `${event.kind} ${describe(event)}`.toLowerCase().includes(term);
   });
-  const markers = allEvents.filter(isNetworkError).slice(0, 16).map((event) => {
-    const status = event.data?.status ?? event.data?.statusCode;
+  // Points on the video's timeline: failed requests, console errors, and comments that mention a time.
+  const errorMarkers = allEvents.filter((event) => isNetworkError(event) || isConsoleError(event)).slice(0, 24).map((event): Marker => {
+    if (event.category === "console") {
+      return { id: event.id, offsetMs: event.offsetMs, kind: "error", text: "!", label: `Console error: ${String(event.data?.message ?? "").slice(0, 120)}` };
+    }
+    const { method, status, path } = requestParts(event);
     return {
-      id: event.id,
-      offsetMs: event.offsetMs,
-      text: typeof status === "number" ? String(status) : "ERR",
-      label: typeof status === "number" ? `HTTP ${status}` : "Request failed",
+      id: event.id, offsetMs: event.offsetMs, kind: "error",
+      text: status === "—" ? "ERR" : status,
+      label: `${status === "—" ? "Request failed" : `HTTP ${status}`} · ${method} ${path}`,
     };
   });
+  const commentMarkers = (commentsQuery.data?.pages.flatMap((page) => page.items) ?? []).flatMap((comment) =>
+    commentTimes(comment).map((offsetMs, index): Marker => ({
+      id: `comment-${comment.id}-${index}`, offsetMs, kind: "comment", text: "",
+      label: `${comment.authorEmail ?? "Someone"}: ${comment.body.slice(0, 140)}`,
+    })));
+  const markers = [...errorMarkers, ...commentMarkers];
   const inspecting = view === "network" && Boolean(requestId);
   const [drawerMounted, setDrawerMounted] = useState(false);
   useEffect(() => {
@@ -266,7 +288,7 @@ export function SharePage() {
   const unavailable = report.error instanceof ApiError && report.error.status === 404;
 
   if (report.isPending) {
-    return <main className="mx-auto max-w-5xl p-6"><Spinner aria-label="Loading the report" /></main>;
+    return <ReportPageSkeleton />;
   }
   if (!report.data || unavailable) {
     return (
@@ -302,18 +324,19 @@ export function SharePage() {
         <div className="flex items-center gap-2">
           {token ? (
             <>
-              <Button asChild variant="outline" size="icon" aria-label="Home"><Link to="/"><Home /></Link></Button>
               <Button asChild variant="ghost"><Link to="/"><LayoutGrid />All Zapp</Link></Button>
             </>
           ) : <span className="flex items-center gap-2 text-sm font-medium"><img src="/logo.svg" alt="" className="size-7" />Zapp</span>}
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex">
-            <Button className={canManage ? "rounded-r-none" : ""} onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
+          <ButtonGroup>
+            <Button onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
             {canManage && (
+              <>
+              <ButtonGroupSeparator className="bg-primary-foreground/25" />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="icon" aria-label="Change who can view" className="rounded-l-none border-l border-primary-foreground/25"><ChevronDown /></Button>
+                  <Button size="icon" aria-label="Change who can view"><ChevronDown /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuLabel>General access</DropdownMenuLabel>
@@ -326,8 +349,9 @@ export function SharePage() {
                   <DropdownMenuItem onSelect={() => setSharing(true)}><Settings />Share settings</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </>
             )}
-          </div>
+          </ButtonGroup>
           {setVisibility.isError && <span role="alert" className="text-sm text-destructive">{errorMessage(setVisibility.error)}</span>}
           {copyState === "failed" && <span role="status" className="text-sm">Copy the URL from the address bar.</span>}
         </div>
@@ -353,14 +377,10 @@ export function SharePage() {
                 />
               </div>
             )}
-            <article className="grid gap-3 border-t px-4 py-5 sm:px-6">
-              <h1 className="break-words text-2xl font-semibold">{title || "Untitled report"}</h1>
-              {description && <p className="whitespace-pre-wrap break-words text-muted-foreground">{description}</p>}
-              <p className="border-t pt-3 text-xs text-muted-foreground">
-                {reporter && <span className="font-medium text-foreground">{reporter} </span>}
-                created this report · <time dateTime={createdAt} title={new Date(createdAt).toLocaleString()}>{timeAgo(createdAt)}</time>
-              </p>
-            </article>
+            <ReportHeading
+              title={title} description={description} reporter={reporter} createdAt={createdAt}
+              canEdit={canManage} onSave={(changes) => saveDetails.mutateAsync(changes)}
+            />
             {token && workspaceId && (
               <Comments
                 reportId={id} token={token} workspaceId={workspaceId}
@@ -390,7 +410,7 @@ export function SharePage() {
                 <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2">
                   <div className="relative min-w-32 flex-1">
                     <Search size={16} aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input className="border-0 bg-muted/50 pl-8" aria-label="Filter loaded events" placeholder="Filter" value={filter} onChange={(event) => setFilter(event.target.value)} />
+                    <Input className="bg-muted/50 pl-8" aria-label="Filter loaded events" placeholder="Filter" value={filter} onChange={(event) => setFilter(event.target.value)} />
                   </div>
                   {view === "network" && (
                     <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
@@ -400,7 +420,7 @@ export function SharePage() {
                   )}
                   {attachmentType === "video" && (
                     <Button size="sm" variant={follow ? "secondary" : "outline"} aria-pressed={follow} onClick={() => setFollow((value) => !value)}>
-                      <LocateFixed />Follow timeline
+                      <LocateFixed />
                     </Button>
                   )}
                 </div>
@@ -413,7 +433,7 @@ export function SharePage() {
                 )}
                 {/* Filter, chips, and the table header stay put; only the rows scroll. */}
                 <div className="min-h-0 flex-1 overflow-auto max-lg:max-h-[70svh]">
-                {events.isPending && <div className="p-4"><Spinner aria-label="Loading diagnostic events" /></div>}
+                {events.isPending && <EventRowsSkeleton label="Loading diagnostic events" />}
                 {events.isError && <div className="p-4"><Alert variant="destructive"><AlertDescription>{errorMessage(events.error)}</AlertDescription></Alert></div>}
                 {events.isSuccess && rows.length === 0 && (
                   <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view === "action" && events.hasNextPage ? "Loading more entries to find user actions…" : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
@@ -435,7 +455,7 @@ export function SharePage() {
                   />
                 )}
                 {events.hasNextPage && <div ref={sentinel} className="p-4" aria-live="polite">
-                  {events.isFetchingNextPage && <Spinner aria-label="Loading more events" />}
+                  {events.isFetchingNextPage && <EventRowsSkeleton label="Loading more events" rows={3} />}
                 </div>}
                 </div>
               </TabsContent>

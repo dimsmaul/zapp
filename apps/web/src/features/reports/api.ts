@@ -84,6 +84,12 @@ export function updateVisibility(token: string, id: string, visibility: Visibili
   });
 }
 
+export function updateDetails(token: string, id: string, changes: { title?: string; description?: string }) {
+  return request<Pick<ReportSummary, "id" | "title" | "description">>(`/reports/${encodeURIComponent(id)}`, {
+    method: "PATCH", token, body: changes,
+  });
+}
+
 export type ReportComment = {
   id: string;
   authorId: string;

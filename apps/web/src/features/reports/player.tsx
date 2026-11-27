@@ -1,4 +1,4 @@
-import { FastForward, Maximize, Minimize, Pause, Play, Rewind, RotateCw, Volume2, VolumeX } from "lucide-react";
+import { FastForward, Maximize, Minimize, MessageSquare, Pause, Play, Rewind, RotateCw, Volume2, VolumeX } from "lucide-react";
 import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ export function seekVideo(video: HTMLVideoElement | null, seconds: number) {
 const pill = "flex items-center gap-0.5 rounded-full bg-black/55 p-1 text-white shadow-lg backdrop-blur-md";
 const pillButton = "rounded-full text-white hover:bg-white/20 hover:text-white";
 
-type Marker = { id: string; offsetMs: number; label: string; text: string };
+/** A point on the timeline: a failed request or console error, or a comment that mentions a time. */
+export type Marker = { id: string; offsetMs: number; label: string; text: string; kind: "error" | "comment" };
 
 type PlayerProps = {
   video: RefObject<HTMLVideoElement | null>;
@@ -180,14 +181,27 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
         )}
         <div className="px-2">
           {limit > 0 && markers.length > 0 && (
-            <div className="relative mx-2 mb-1 h-6" aria-label="Network error markers">
-              {markers.filter(({ offsetMs }) => offsetMs / 1000 <= limit).map((marker) => (
-                <div key={marker.id} className="absolute top-0 -translate-x-1/2" style={{ left: `${marker.offsetMs / (limit * 10)}%` }}>
-                  <button type="button" className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow ring-2 ring-black/40 hover:bg-destructive/80 focus-visible:outline-2 focus-visible:outline-white" aria-label={`${marker.label} at ${clock(marker.offsetMs / 1000)}`} title={marker.label} onClick={() => seek(marker.offsetMs / 1000)}>
-                    {marker.text}
-                  </button>
-                </div>
-              ))}
+            <div className="relative mx-2 mb-1 h-6" role="group" aria-label="Errors and comments on the timeline">
+              {markers.filter(({ offsetMs }) => offsetMs / 1000 <= limit).map((marker) => {
+                const position = marker.offsetMs / (limit * 10);
+                // Keep the tooltip inside the video when a marker sits near either edge.
+                const align = position < 18 ? "left-0" : position > 82 ? "right-0" : "left-1/2 -translate-x-1/2";
+                return (
+                  <div key={marker.id} className="group absolute top-0 -translate-x-1/2" style={{ left: `${position}%` }}>
+                    <button
+                      type="button" aria-label={`${marker.label} at ${clock(marker.offsetMs / 1000)}`}
+                      className={`grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold leading-none shadow ring-2 ring-black/40 focus-visible:outline-2 focus-visible:outline-white ${marker.kind === "comment" ? "bg-primary text-primary-foreground hover:bg-primary/80" : "bg-destructive text-white hover:bg-destructive/80"}`}
+                      onClick={() => seek(marker.offsetMs / 1000)}
+                    >
+                      {marker.kind === "comment" ? <MessageSquare className="size-3 fill-current" /> : marker.text}
+                    </button>
+                    <span role="tooltip" className={`pointer-events-none absolute bottom-full z-20 mb-1.5 hidden w-max max-w-56 rounded-md bg-popover px-2 py-1 text-xs font-normal leading-snug text-popover-foreground shadow-md ring-1 ring-foreground/10 group-focus-within:block group-hover:block ${align}`}>
+                      <span className="block font-mono text-[10px] text-muted-foreground">{clock(marker.offsetMs / 1000)}</span>
+                      <span className="line-clamp-3 break-words">{marker.label}</span>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
           <Slider
