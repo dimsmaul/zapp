@@ -1,8 +1,9 @@
-import { api, ApiError, currentAccount, hostPattern, serverOrigin } from './api.js'
+import { api, ApiError, currentAccount, hostPattern, send, serverOrigin } from './api.js'
 import { getDraft, listDrafts, removeDraft, saveDraft } from './store.js'
 
 const $ = (id) => document.getElementById(id)
 const id = new URL(location.href).searchParams.get('id')
+const embedded = window.top !== window
 const video = $('video')
 let draft
 let busy = false
@@ -216,7 +217,8 @@ $('grant').addEventListener('click', () => void run(async () => {
 $('discard').addEventListener('click', () => void run(async () => {
   if (!confirm('Discard this local draft?')) return
   await removeDraft(id)
-  location.href = 'preview.html'
+  if (embedded) window.parent.postMessage('zapp-preview-close', '*')
+  else location.href = 'preview.html'
 }))
 $('copy').addEventListener('click', () => void run(async () => {
   await navigator.clipboard.writeText($('link').value)
@@ -225,6 +227,18 @@ $('copy').addEventListener('click', () => void run(async () => {
 }))
 
 async function init() {
+  if (embedded) {
+    if (!id) throw new Error('Open this preview from Zapp.')
+    await send('authorize-preview')
+    document.body.dataset.embedded = 'true'
+    $('all-drafts').hidden = true
+    window.parent.postMessage('zapp-preview-ready', '*')
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !busy && !document.fullscreenElement) {
+        window.parent.postMessage('zapp-preview-close', '*')
+      }
+    })
+  }
   if (!id) return showList()
   draft = await getDraft(id)
   if (!draft) throw new Error('This local draft is no longer available.')

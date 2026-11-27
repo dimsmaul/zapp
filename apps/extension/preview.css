@@ -1,6 +1,7 @@
 .preview { max-width: 1600px; min-height: 100vh; margin: 0 auto; padding: clamp(16px, 3vw, 36px); }
 .preview .brand { padding-bottom: 15px; border-bottom: 1px solid var(--line); }
 .preview .brand a { margin-left: auto; color: var(--muted); font-size: 13px; }
+[data-embedded="true"] .preview .brand { display: none; }
 .review { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 315px); gap: 18px; align-items: start; }
 .media, .details { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
 .media { background: #18181b; }

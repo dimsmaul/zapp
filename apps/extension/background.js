@@ -155,11 +155,22 @@ async function finish(session) {
   }
   recording = null
   await chrome.action.setBadgeText({ text: '' }).catch(() => {})
-  await preview(session.draft.id)
+  await preview(session.tabId, session.draft.id)
 }
 
-function preview(id) {
-  return chrome.tabs.create({ url: chrome.runtime.getURL(`preview.html?id=${encodeURIComponent(id)}`) })
+async function preview(tabId, id) {
+  const key = `preview:${tabId}`
+  const params = new URLSearchParams({ id, dialog: crypto.randomUUID() })
+  const url = chrome.runtime.getURL(`preview.html?${params}`)
+  try {
+    await chrome.storage.session.set({ [key]: { url, expiresAt: Date.now() + 60_000 } })
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['review-overlay.js'] })
+    const shown = await chrome.tabs.sendMessage(tabId, { to: 'review', url }, { frameId: 0 })
+    if (!shown) throw new Error('Preview dialog could not open.')
+  } catch {
+    await chrome.storage.session.remove(key).catch(() => {})
+    await chrome.action.setBadgeText({ text: 'DRAFT', tabId }).catch(() => {})
+  }
 }
 
 async function screenshot() {
@@ -170,7 +181,7 @@ async function screenshot() {
   const data = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
   const blob = await (await fetch(data)).blob()
   await saveDraft({ ...draft, blob, events: [], warnings: [] })
-  await preview(draft.id)
+  await preview(tab.id, draft.id)
 }
 
 async function switchTab(id) {
@@ -192,6 +203,18 @@ async function clearTab() {
 
 async function handle(message, sender) {
   if (sender.id !== chrome.runtime.id) throw new Error('Unrecognized connection.')
+  if (message.type === 'authorize-preview') {
+    if (!sender.tab || !sender.frameId || !sender.url?.startsWith(chrome.runtime.getURL('preview.html?'))) {
+      throw new Error('This preview must be opened from the recording tab.')
+    }
+    const key = `preview:${sender.tab.id}`
+    const { [key]: pending } = await chrome.storage.session.get(key)
+    if (pending?.url !== sender.url || pending.expiresAt < Date.now()) {
+      throw new Error('This preview link expired. Your capture is saved in Zapp drafts.')
+    }
+    await chrome.storage.session.remove(key)
+    return true
+  }
   if (sender.tab && sender.frameId === 0 && !sender.url?.startsWith(extensionOrigin)) {
     if (!recording || sender.tab.id !== recording.tabId || message.id !== recording.draft.id) return
     if (message.type === 'page-event') return pageEvent(recording, message.data)
@@ -250,6 +273,7 @@ chrome.tabs.onUpdated.addListener((id, change) => {
 
 chrome.tabs.onRemoved.addListener((id) => {
   if (recording?.tabId === id) void stop()?.catch(() => {})
+  void chrome.storage.session.remove(`preview:${id}`).catch(() => {})
   void chrome.storage.session.get('preferredTab').then(({ preferredTab }) => {
     if (preferredTab === id) return chrome.storage.session.remove('preferredTab')
   })

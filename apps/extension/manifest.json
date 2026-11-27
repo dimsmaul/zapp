@@ -7,6 +7,9 @@
   "permissions": ["activeTab", "debugger", "offscreen", "scripting", "storage", "tabCapture", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "background": { "service_worker": "background.js", "type": "module" },
+  "web_accessible_resources": [
+    { "resources": ["preview.html"], "matches": ["http://*/*", "https://*/*"] }
+  ],
   "action": {
     "default_title": "Zapp",
     "default_popup": "popup.html"
