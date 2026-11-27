@@ -1,20 +1,99 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Camera, Globe, Lock, Play, Plus, Search, Video } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ContextMenu, ContextMenuContent, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api";
-import { listReports } from "./api";
+import { type ReportSummary, type Visibility, listReports, updateVisibility } from "./api";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+/** A report card. Right-click it (when you may manage it) to change who can view it. */
+function ReportCard({ report, onVisibility }: { report: ReportSummary; onVisibility: (visibility: Visibility) => void }) {
+  const card = (
+    <Link to="/s/$id" params={{ id: report.id }} className="group grid gap-2 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Thumbnail report={report} />
+      <div className="grid gap-0.5 px-1">
+        <span className="truncate font-medium">{report.title || "Untitled"}</span>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {report.visibility === "public" ? <Globe size={12} aria-label="Public" /> : <Lock size={12} aria-label="Private" />}
+          {report.createdAt && dateFormat.format(new Date(report.createdAt))}
+        </span>
+      </div>
+    </Link>
+  );
+  if (!report.canManage) return card;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuLabel>Who can view</ContextMenuLabel>
+        <ContextMenuRadioGroup value={report.visibility} onValueChange={(value) => onVisibility(value as Visibility)}>
+          <ContextMenuRadioItem value="private"><Lock />Private</ContextMenuRadioItem>
+          <ContextMenuRadioItem value="public"><Globe />Public</ContextMenuRadioItem>
+        </ContextMenuRadioGroup>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+/** Card thumbnail: first frame of a recording (or the screenshot) that plays on hover. */
+function Thumbnail({ report }: { report: ReportSummary }) {
+  const box = useRef<HTMLDivElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const isVideo = report.attachmentType !== "screenshot";
+  const media = Boolean(report.previewUrl) && visible && !failed;
+
+  // Only load media for cards that are on (or near) the screen.
+  useEffect(() => {
+    const node = box.current;
+    if (!node || !report.previewUrl) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "200px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [report.previewUrl]);
+
+  return (
+    <div
+      ref={box}
+      className="relative grid aspect-video place-items-center overflow-hidden rounded-xl bg-neutral-900 text-white ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-ring"
+      onPointerEnter={() => void video.current?.play().catch(() => undefined)}
+      onPointerLeave={() => {
+        const player = video.current;
+        if (!player) return;
+        player.pause();
+        player.currentTime = 0.1;
+      }}
+    >
+      {media && isVideo && (
+        <video ref={video} src={`${report.previewUrl}#t=0.1`} preload="metadata" muted loop playsInline className="absolute inset-0 size-full object-cover" onError={() => setFailed(true)} />
+      )}
+      {media && !isVideo && (
+        <img src={report.previewUrl ?? ""} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" onError={() => setFailed(true)} />
+      )}
+      {isVideo
+        ? <span className="relative grid size-11 place-items-center rounded-full bg-white/20 backdrop-blur transition-opacity group-hover:opacity-0"><Play className="size-5 fill-current" /></span>
+        : !media && <Camera className="size-8 opacity-70" />}
+      <Badge variant="secondary" className="absolute top-2 left-2">{isVideo ? "Recording" : "Screenshot"}</Badge>
+    </div>
+  );
+}
 
 export function ReportsPage() {
   const [capture, setCapture] = useState<"choose" | "video" | "screenshot" | null>(null);
@@ -30,6 +109,11 @@ export function ReportsPage() {
     getNextPageParam: (page) => page.nextCursor,
     enabled: Boolean(token && workspaceId),
     retry: false,
+  });
+  const queryClient = useQueryClient();
+  const changeVisibility = useMutation({
+    mutationFn: ({ id, visibility }: { id: string; visibility: Visibility }) => updateVisibility(token, id, visibility),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports", token, workspaceId] }),
   });
   const items = reports.data?.pages.flatMap((page) => page.items) ?? [];
   const term = search.trim().toLowerCase();
@@ -47,6 +131,7 @@ export function ReportsPage() {
       </header>
       <div className="grid gap-5 p-4 sm:p-6 lg:px-10 lg:py-8">
         {reports.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(reports.error)}</AlertDescription></Alert>}
+        {changeVisibility.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(changeVisibility.error)}</AlertDescription></Alert>}
         {reports.isPending && <Spinner aria-label="Loading Zapps" />}
         {reports.isSuccess && items.length === 0 && (
           <div className="grid max-w-4xl gap-4 sm:grid-cols-2">
@@ -99,19 +184,7 @@ export function ReportsPage() {
               <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {visible.map((report) => (
                   <li key={report.id}>
-                    <Link to="/s/$id" params={{ id: report.id }} className="group grid gap-2 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      <div className="relative grid aspect-video place-items-center overflow-hidden rounded-xl bg-neutral-900 text-white ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-ring">
-                        {report.attachmentType === "screenshot" ? <Camera className="size-8 opacity-70" /> : <span className="grid size-11 place-items-center rounded-full bg-white/20 backdrop-blur"><Play className="size-5 fill-current" /></span>}
-                        <Badge variant="secondary" className="absolute top-2 left-2">{report.attachmentType === "screenshot" ? "Screenshot" : "Recording"}</Badge>
-                      </div>
-                      <div className="grid gap-0.5 px-1">
-                        <span className="truncate font-medium">{report.title || "Untitled"}</span>
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          {report.visibility === "public" ? <Globe size={12} aria-label="Public" /> : <Lock size={12} aria-label="Private" />}
-                          {report.createdAt && dateFormat.format(new Date(report.createdAt))}
-                        </span>
-                      </div>
-                    </Link>
+                    <ReportCard report={report} onVisibility={(visibility) => changeVisibility.mutate({ id: report.id, visibility })} />
                   </li>
                 ))}
               </ul>
