@@ -10,7 +10,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuLabel, ContextMenuRadioGrou
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { CardGridSkeleton } from "@/components/skeletons";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api";
 import { type ReportSummary, type Visibility, listReports, updateVisibility } from "./api";
@@ -134,7 +134,7 @@ export function ReportsPage() {
       <div className="grid gap-5 p-4 sm:p-6 lg:px-10 lg:py-8">
         {reports.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(reports.error)}</AlertDescription></Alert>}
         {changeVisibility.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(changeVisibility.error)}</AlertDescription></Alert>}
-        {reports.isPending && <Spinner aria-label="Loading Zapps" />}
+        {reports.isPending && <CardGridSkeleton label="Loading Zapps" />}
         {reports.isSuccess && items.length === 0 && (
           <div className="grid max-w-4xl gap-4 sm:grid-cols-2">
             <Card>

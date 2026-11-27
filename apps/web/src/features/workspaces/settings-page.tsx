@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { KeyRound, MailPlus, Settings2, Users } from "lucide-react";
 import { useState } from "react";
 import { SettingsLayout, type SettingsSection } from "@/components/settings-layout";
-import { Spinner } from "@/components/ui/spinner";
+import { SectionSkeleton } from "@/components/skeletons";
 import { useSession } from "@/features/auth/session";
 import { listWorkspaces } from "./api";
 import { GeneralSection } from "./settings/general";
@@ -36,7 +36,7 @@ export function WorkspaceSettingsPage() {
 
   return (
     <SettingsLayout title="Workspace settings" caption={workspace?.name} sections={visible} current={current} onSelect={setSection}>
-      {workspaces.isPending && <Spinner aria-label="Loading workspace" />}
+      {workspaces.isPending && <SectionSkeleton label="Loading workspace" />}
       {workspace && current === "general" && <GeneralSection token={token} workspace={workspace} />}
       {workspace && current === "members" && <MembersSection token={token} workspace={workspace} />}
       {workspace && current === "invitations" && <InvitationsSection token={token} workspace={workspace} />}

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { ListSkeleton } from "@/components/skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api";
@@ -171,7 +171,7 @@ export function SettingsPage() {
                 <Button onClick={() => { create.reset(); setCreating(true); }}><Plus />New token</Button>
               </CardHeader>
               <CardContent>
-                {tokens.isPending && <Spinner aria-label="Loading tokens" />}
+                {tokens.isPending && <ListSkeleton label="Loading tokens" rows={2} avatar={false} />}
                 {tokens.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(tokens.error)}</AlertDescription></Alert>}
                 {tokens.isSuccess && tokens.data.items.length === 0 && <p className="text-sm text-muted-foreground">No tokens yet. Create one to connect an agent.</p>}
                 <ul className="grid divide-y">

@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { LinesSkeleton } from "@/components/skeletons";
 import { errorMessage } from "@/lib/api";
 import type { NetworkDetail } from "./api";
 import { clock } from "./player";
@@ -104,7 +104,7 @@ export function NetworkInspector({ detail, loading, error, onClose, onSeek }: Pr
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {loading && <div className="p-3"><Spinner aria-label="Loading the request" /></div>}
+        {loading && <LinesSkeleton label="Loading the request" />}
         {error != null && <div className="p-3"><Alert variant="destructive"><AlertDescription>{errorMessage(error)}</AlertDescription></Alert></div>}
         {detail && tab === "headers" && (
           <>

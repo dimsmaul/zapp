@@ -7,6 +7,7 @@ import {
   lazyRouteComponent,
   redirect,
 } from "@tanstack/react-router";
+import { SectionSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { isActive, useSession } from "@/features/auth/session";
@@ -94,6 +95,8 @@ const share = createRoute({
 export const router = createRouter({
   routeTree: root.addChildren([index, login, invite, signedIn.addChildren([workspaces, workspaceSettings, settings, reports]), share]),
   defaultPreload: "intent",
+  // Shown while a lazily loaded page is still being fetched.
+  defaultPendingComponent: () => <div className="p-4 sm:p-6 lg:p-8"><SectionSkeleton label="Loading the page" /></div>,
 });
 
 declare module "@tanstack/react-router" {

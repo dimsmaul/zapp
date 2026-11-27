@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
+import { ListSkeleton } from "@/components/skeletons";
 import { useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
 import { createWorkspace, listWorkspaces, selectWorkspace } from "./api";
@@ -61,7 +61,7 @@ export function WorkspacesPage() {
       <Card>
         <CardHeader><CardTitle>Your workspaces</CardTitle><CardDescription>Choose a workspace to view its reports.</CardDescription></CardHeader>
         <CardContent>
-          {workspaces.isPending && <Spinner aria-label="Loading workspaces" />}
+          {workspaces.isPending && <ListSkeleton label="Loading workspaces" rows={2} avatar={false} />}
           {workspaces.data?.items.length === 0 && <p>You haven’t joined a workspace yet.</p>}
           <ul className="grid gap-3">
             {workspaces.data?.items.map((workspace) => (

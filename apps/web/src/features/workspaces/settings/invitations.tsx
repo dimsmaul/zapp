@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
+import { ListSkeleton } from "@/components/skeletons";
 import { errorMessage } from "@/lib/api";
 import { type Invitation, type PendingInvitation, type Workspace, inviteMember, listInvitations, revokeInvitation } from "../api";
 
@@ -87,7 +87,7 @@ export function InvitationsSection({ token, workspace }: Props) {
           <CardDescription>People who were invited and have not joined yet. Expired invitations disappear.</CardDescription>
         </CardHeader>
         <CardContent>
-          {pending.isPending && <Spinner aria-label="Loading invitations" />}
+          {pending.isPending && <ListSkeleton label="Loading invitations" rows={2} avatar={false} />}
           {pending.isSuccess && pending.data.items.length === 0 && <p className="text-sm text-muted-foreground">No pending invitations.</p>}
           <ul className="grid divide-y">
             {pending.data?.items.map((item) => (

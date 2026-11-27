@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { ListSkeleton } from "@/components/skeletons";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api";
 import { type Member, type Workspace, changeRole, listMembers, removeMember } from "../api";
@@ -50,7 +50,7 @@ export function MembersSection({ token, workspace }: Props) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {members.isPending && <Spinner aria-label="Loading members" />}
+        {members.isPending && <ListSkeleton label="Loading members" />}
         {members.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(members.error)}</AlertDescription></Alert>}
         {promote.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>{errorMessage(promote.error)}</AlertDescription></Alert>}
         <ul className="grid divide-y">

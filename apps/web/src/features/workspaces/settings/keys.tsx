@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
+import { ListSkeleton } from "@/components/skeletons";
 import { errorMessage } from "@/lib/api";
 import { type CaptureKey, type CreatedKey, type Workspace, createKey, listKeys, revokeKey, updateKey } from "../api";
 
@@ -74,7 +74,7 @@ export function KeysSection({ token, workspace }: Props) {
               </AlertDescription>
             </Alert>
           )}
-          {keys.isPending && <Spinner aria-label="Loading keys" />}
+          {keys.isPending && <ListSkeleton label="Loading keys" rows={2} avatar={false} />}
           {keys.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(keys.error)}</AlertDescription></Alert>}
           {keys.isSuccess && keys.data.items.length === 0 && <p className="text-sm text-muted-foreground">No capture keys yet.</p>}
           <ul className="grid divide-y">

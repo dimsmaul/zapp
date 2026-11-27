@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { ListSkeleton } from "@/components/skeletons";
 import { errorMessage } from "@/lib/api";
 import { listMembers } from "@/features/workspaces/api";
 import { type Sharing, type Visibility, addPerson, getSharing, removePerson } from "./api";
@@ -94,7 +94,7 @@ export function ShareDialog({ open, onOpenChange, reportId, title, token, worksp
 
         <div className="grid gap-1">
           <p className="text-xs font-medium text-muted-foreground">People with access</p>
-          {sharing.isPending && <Spinner aria-label="Loading people" />}
+          {sharing.isPending && <ListSkeleton label="Loading people" rows={2} />}
           <ul className="grid divide-y rounded-lg border">
             {people.map((person) => (
               <li key={person.userId} className="flex items-center justify-between gap-2 px-3 py-2">
