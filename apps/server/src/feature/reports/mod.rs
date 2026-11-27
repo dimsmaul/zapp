@@ -83,6 +83,7 @@ pub(crate) async fn read_report(
         .sign_playback(key)
         .await
         .map_err(|_| STORAGE_UNAVAILABLE)?;
+    let reporter = reporter_for_member(&state.db, &headers, &report).await?;
     Ok((
         [(header::CACHE_CONTROL, "private, no-store")],
         Json(json!({
@@ -91,8 +92,32 @@ pub(crate) async fn read_report(
             "attachmentType": report.get_str("attachmentType").ok(),
             "attachmentUrl": url, "captureContentType": media.get_str("contentType").ok(),
             "debuggerStatus": report.get_str("debuggerStatus").ok(),
+            "createdAt": report.get_datetime("createdAt").ok().and_then(|date| date.try_to_rfc3339_string().ok()),
+            "reporter": reporter,
         })),
     ))
+}
+
+/// The reporter's email, shown only to signed-in members of the report's workspace
+/// so public and share-link viewers never learn who filed the report.
+async fn reporter_for_member(db: &Database, headers: &HeaderMap, report: &Document) -> Result<Option<String>, ApiError> {
+    let (Some(raw), Ok(workspace), Ok(reporter)) =
+        (bearer_token(headers), report.get_str("workspaceId"), report.get_str("reporterId"))
+    else {
+        return Ok(None);
+    };
+    let session = db
+        .collection::<Document>("user_sessions")
+        .find_one(doc! { "_id": credential_hash(raw), "expiresAt": { "$gt": DateTime::now() } })
+        .await?;
+    let Some(viewer) = session.as_ref().and_then(|session| session.get_str("userId").ok()) else {
+        return Ok(None);
+    };
+    if !has_membership(db, workspace, viewer).await? {
+        return Ok(None);
+    }
+    let user = db.collection::<Document>("users").find_one(doc! { "_id": reporter }).await?;
+    Ok(user.and_then(|user| user.get_str("email").ok().map(str::to_owned)))
 }
 
 pub(crate) async fn visible_report(db: &Database, headers: &HeaderMap, id: &str) -> Result<Document, ApiError> {

@@ -13,7 +13,7 @@ The first backend milestone lets a reporter capture a bug, upload the recording 
 | `POST /api/embed/capture-token` | Validate the widget key and origin and issue a short-lived capture token. | Implemented |
 | `POST /api/embed/bug-report-upload-session` | Create or reuse a draft and return signed URLs for direct uploads to object storage. | Implemented with S3 configuration |
 | `POST /api/embed/bug-report-finalize` | Verify and publish the media, save the report, and return its share URL. Queue debugger processing durably and make repeated finalization return the same report. | Implemented with S3 configuration |
-| `GET /api/v1/reports/{id}` | Check report access and return report details, a signed media URL, and debugger processing status. A viewer with access can fetch media while debugger processing is pending. | Implemented with S3 configuration |
+| `GET /api/v1/reports/{id}` | Check report access and return report details, `createdAt`, a signed media URL, and debugger processing status. `reporter` (the reporter's email) is returned only to signed-in members of the report's workspace and is `null` for public and share-link viewers. A viewer with access can fetch media while debugger processing is pending. | Implemented with S3 configuration |
 
 ## Debugger read endpoints
 
