@@ -163,7 +163,7 @@ export function ReportsPage() {
                 <Input className="pl-8" aria-label="Search Zapps" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} />
               </div>
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger aria-label="Filter by type"><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Filter by type" className="w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All types</SelectItem>
                   <SelectItem value="video">Recordings</SelectItem>
@@ -171,7 +171,7 @@ export function ReportsPage() {
                 </SelectContent>
               </Select>
               <Select value={access} onValueChange={setAccess}>
-                <SelectTrigger aria-label="Filter by access"><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Filter by access" className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Any access</SelectItem>
                   {visibilityOptions.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
