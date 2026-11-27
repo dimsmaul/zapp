@@ -100,7 +100,7 @@ export function ReportsPage() {
                 {visible.map((report) => (
                   <li key={report.id}>
                     <Link to="/s/$id" params={{ id: report.id }} className="group grid gap-2 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      <div className="relative grid aspect-video place-items-center overflow-hidden rounded-xl bg-neutral-900 text-white ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-[#7ed957]">
+                      <div className="relative grid aspect-video place-items-center overflow-hidden rounded-xl bg-neutral-900 text-white ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-ring">
                         {report.attachmentType === "screenshot" ? <Camera className="size-8 opacity-70" /> : <span className="grid size-11 place-items-center rounded-full bg-white/20 backdrop-blur"><Play className="size-5 fill-current" /></span>}
                         <Badge variant="secondary" className="absolute top-2 left-2">{report.attachmentType === "screenshot" ? "Screenshot" : "Recording"}</Badge>
                       </div>

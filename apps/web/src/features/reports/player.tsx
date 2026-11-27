@@ -43,6 +43,7 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const limit = duration || Math.max(seekableEnd, durationHint);
+  const [ratio, setRatio] = useState(16 / 9);
   const [idle, setIdle] = useState(true);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // YouTube-style: controls show on pointer move and hide after 2.5s while playing.
@@ -120,7 +121,9 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
   return (
     <div
       ref={frame}
-      className="relative isolate grid aspect-video min-h-52 min-w-0 overflow-hidden bg-neutral-950 focus-visible:ring-2 focus-visible:ring-ring fullscreen:h-full fullscreen:w-full"
+      className="relative isolate mx-auto grid min-w-0 overflow-hidden rounded-lg bg-neutral-950 focus-visible:ring-2 focus-visible:ring-ring fullscreen:h-full fullscreen:w-full fullscreen:rounded-none"
+      // Hug the recording's own aspect ratio so there are no black bars around it.
+      style={expanded ? undefined : { aspectRatio: String(ratio), width: `min(100%, calc(78svh * ${ratio}))` }}
       role="group"
       aria-label="Recording player"
       tabIndex={0}
@@ -137,6 +140,7 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
           className="h-full w-full object-contain"
           onClick={() => void togglePlayback()}
           onLoadedMetadata={({ currentTarget }) => {
+            if (currentTarget.videoWidth && currentTarget.videoHeight) setRatio(currentTarget.videoWidth / currentTarget.videoHeight);
             currentTarget.playbackRate = Number(speed);
             currentTarget.volume = volume;
             currentTarget.muted = muted;
@@ -179,7 +183,7 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
             <div className="relative mx-2 mb-1 h-6" aria-label="Network error markers">
               {markers.filter(({ offsetMs }) => offsetMs / 1000 <= limit).map((marker) => (
                 <div key={marker.id} className="absolute top-0 -translate-x-1/2" style={{ left: `${marker.offsetMs / (limit * 10)}%` }}>
-                  <button type="button" className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow ring-2 ring-black/40 hover:bg-red-400 focus-visible:outline-2 focus-visible:outline-white" aria-label={`${marker.label} at ${clock(marker.offsetMs / 1000)}`} title={marker.label} onClick={() => seek(marker.offsetMs / 1000)}>
+                  <button type="button" className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow ring-2 ring-black/40 hover:bg-destructive/80 focus-visible:outline-2 focus-visible:outline-white" aria-label={`${marker.label} at ${clock(marker.offsetMs / 1000)}`} title={marker.label} onClick={() => seek(marker.offsetMs / 1000)}>
                     {marker.text}
                   </button>
                 </div>
@@ -187,7 +191,7 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
             </div>
           )}
           <Slider
-            className="**:data-[slot=slider-range]:bg-[#7ed957] **:data-[slot=slider-thumb]:border-2 **:data-[slot=slider-thumb]:border-[#7ed957] **:data-[slot=slider-track]:bg-white/35"
+            className="**:data-[slot=slider-track]:bg-white/35"
             value={[Math.min(current, limit)]} min={0} max={Math.max(0.1, limit)} step={0.1} aria-label="Playback position" disabled={!limit} onValueChange={([value]) => seek(value)}
           />
         </div>

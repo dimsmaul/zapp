@@ -237,28 +237,30 @@ export function SharePage() {
           ) : <span className="text-sm font-medium text-muted-foreground">Zapp report</span>}
         </div>
         <div className="flex items-center gap-2">
-          <Button className="bg-[#7ed957] font-semibold text-black hover:bg-[#6fc94a]" onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
+          <Button onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
           {copyState === "failed" && <span role="status" className="text-sm">Copy the URL from the address bar.</span>}
         </div>
       </header>
       <div className="min-w-0 lg:overflow-y-auto">
             {attachmentType === "screenshot" ? (
-              <div className="grid place-items-center bg-neutral-950">
+              <div className="grid place-items-center px-4 pt-4 sm:px-6 sm:pt-6">
                   {mediaError && <Alert variant="destructive"><AlertDescription>
                     The screenshot could not be loaded.
                     <Button variant="outline" size="sm" disabled={report.isFetching} onClick={() => void report.refetch()}>Reload</Button>
                   </AlertDescription></Alert>}
-                  <img className="max-h-[72svh] w-full object-contain" src={attachmentUrl} alt={title ? `Screenshot for ${title}` : "Captured screenshot"} onLoad={() => setMediaError(false)} onError={() => setMediaError(true)} />
+                  <img className="max-h-[78svh] max-w-full rounded-lg object-contain" src={attachmentUrl} alt={title ? `Screenshot for ${title}` : "Captured screenshot"} onLoad={() => setMediaError(false)} onError={() => setMediaError(true)} />
               </div>
             ) : (
-              <ReportPlayer
-                video={video} src={attachmentUrl} markers={markers}
-                durationHint={Math.ceil((allEvents.at(-1)?.offsetMs ?? 0) / 1000)}
-                onReload={async () => {
-                  const result = await report.refetch();
-                  return result.isError ? undefined : result.data?.attachmentUrl;
-                }}
-              />
+              <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+                <ReportPlayer
+                  video={video} src={attachmentUrl} markers={markers}
+                  durationHint={Math.ceil((allEvents.at(-1)?.offsetMs ?? 0) / 1000)}
+                  onReload={async () => {
+                    const result = await report.refetch();
+                    return result.isError ? undefined : result.data?.attachmentUrl;
+                  }}
+                />
+              </div>
             )}
             <article className="grid gap-3 border-t px-4 py-5 sm:px-6">
               <h1 className="break-words text-2xl font-semibold">{title || "Untitled report"}</h1>
@@ -282,7 +284,7 @@ export function SharePage() {
               <div className="sticky top-0 z-10 border-b bg-background px-4 pt-3 pb-2">
               <TabsList variant="line" aria-label="Debugger views" className="h-auto">
                 {(["console", "network", "timeline"] as const).map((tab) => (
-                  <TabsTrigger key={tab} value={tab} className="flex-none rounded-md border-transparent px-3 py-1.5 capitalize data-active:border-[#7ed957]">{tab}</TabsTrigger>
+                  <TabsTrigger key={tab} value={tab} className="flex-none rounded-md border-transparent px-3 py-1.5 capitalize">{tab}</TabsTrigger>
                 ))}
               </TabsList>
               </div>

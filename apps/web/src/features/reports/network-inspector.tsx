@@ -97,7 +97,7 @@ export function NetworkInspector({ detail, loading, error, onClose, onSeek }: Pr
           {tabs.map(([id, label]) => (
             <button
               key={id} type="button" role="tab" aria-selected={tab === id}
-              className={`h-8 border-b-2 px-3 text-xs whitespace-nowrap ${tab === id ? "border-sky-500 text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+              className={`h-8 border-b-2 px-3 text-xs whitespace-nowrap ${tab === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               onClick={() => setTab(id)}
             >{label}</button>
           ))}
@@ -114,7 +114,7 @@ export function NetworkInspector({ detail, loading, error, onClose, onSeek }: Pr
                 ["Request Method", String(request?.method ?? detail.event.data?.method ?? "—")],
                 ["Status Code", (
                   <span className="inline-flex items-center gap-1.5">
-                    <span className={`size-2 rounded-full ${ok ? "bg-green-500" : "bg-red-500"}`} aria-hidden="true" />
+                    <span className={`size-2 rounded-full ${ok ? "bg-primary" : "bg-destructive"}`} aria-hidden="true" />
                     {failure ? `(failed) ${failure}` : status !== null ? `${status} ${String(response?.statusText ?? "")}`.trim() : "—"}
                   </span>
                 )],
