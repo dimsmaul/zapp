@@ -80,6 +80,47 @@ impl Storage {
         })
     }
 
+    /// Streams `body` into storage as a multipart upload so large recordings never sit fully in memory.
+    /// Aborts and returns `Ok(false)` when the body exceeds `max` bytes.
+    pub(crate) async fn put_stream<E>(
+        &self,
+        key: &str,
+        content_type: &str,
+        mut body: impl futures_util::Stream<Item = Result<axum::body::Bytes, E>> + Unpin,
+        max: usize,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        use futures_util::StreamExt;
+        let mut attributes = object_store::Attributes::new();
+        attributes.insert(Attribute::ContentType, content_type.to_owned().into());
+        let upload = self
+            .0
+            .put_multipart_opts(&Path::from(key), object_store::PutMultipartOptions { attributes, ..Default::default() })
+            .await?;
+        let mut write = object_store::WriteMultipart::new(upload);
+        let mut total = 0usize;
+        while let Some(chunk) = body.next().await {
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    let _ = write.abort().await;
+                    return Err(error.into());
+                }
+            };
+            total += chunk.len();
+            if total > max {
+                let _ = write.abort().await;
+                return Ok(false);
+            }
+            write.wait_for_capacity(4).await?;
+            write.write(&chunk);
+        }
+        write.finish().await?;
+        Ok(true)
+    }
+
     pub(crate) async fn sign_playback(&self, key: &str) -> object_store::Result<String> {
         self.0
             .signed_url(Method::GET, &Path::from(key), Duration::from_secs(300))

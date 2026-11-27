@@ -148,6 +148,30 @@ impl CaptureService<'_> {
         self.finalize_draft(DraftOwner::embed(&key), input, now).await
     }
 
+    /// Receives the capture (or debugger payload) through the server instead of a presigned storage URL,
+    /// so clients only ever talk to the Zapp server they are configured with.
+    pub async fn upload_member_artifact<E>(
+        &self, workspace: &str, user_id: &str, id: &str, debugger: bool,
+        body: impl futures_util::Stream<Item = Result<axum::body::Bytes, E>> + Unpin,
+    ) -> Result<(), CaptureError>
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        let storage = self.storage.ok_or(CaptureError::StorageUnavailable)?;
+        let draft = self.repository.draft(&DraftOwner::member(workspace, user_id), id, now_ms()).await?;
+        let (key, content_type, max) = if debugger {
+            let key = draft.artifacts.debugger.ok_or(CaptureError::InvalidUpload)?;
+            (key, "application/json".to_owned(), 10 * 1024 * 1024)
+        } else {
+            (draft.artifacts.media, draft.artifacts.content_type, 100 * 1024 * 1024)
+        };
+        match storage.put_stream(&key, &content_type, body, max).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(CaptureError::InvalidMedia(super::model::MediaValidation::Size)),
+            Err(_) => Err(CaptureError::StorageUnavailable),
+        }
+    }
+
     pub async fn finalize_member_draft(&self, workspace: &str, user: &str, input: &FinalizeInput) -> Result<(), CaptureError> {
         self.finalize_draft(DraftOwner::member(workspace, user), input, now_ms()).await
     }

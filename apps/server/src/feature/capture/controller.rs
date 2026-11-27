@@ -57,6 +57,21 @@ pub(super) async fn member_upload_session(
     Ok(Json(service(&state).create_member_draft(workspace, &session.user_id, request_id, input).await?))
 }
 
+pub(super) async fn member_upload(
+    State(state): State<AppState>, session: Session, Path((id, kind)): Path<(String, String)>, body: axum::body::Body,
+) -> Result<StatusCode, ApiError> {
+    let debugger = match kind.as_str() {
+        "capture" => false,
+        "debugger" => true,
+        _ => return Err(ApiError::invalid("Upload kind must be capture or debugger.")),
+    };
+    let workspace = active_workspace(&state.db, &session).await?;
+    service(&state)
+        .upload_member_artifact(workspace, &session.user_id, &id, debugger, Box::pin(body.into_data_stream()))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(super) async fn member_finalize(
     State(state): State<AppState>, session: Session, Path(id): Path<String>, options: Option<Json<FinalizeOptions>>,
 ) -> Result<Json<FinalizeResponse>, ApiError> {

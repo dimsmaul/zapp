@@ -1,7 +1,8 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::{Method, header},
-    routing::post,
+    routing::{post, put},
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -11,6 +12,11 @@ use crate::adapter::http::AppState;
 pub(crate) fn member_router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/captures/upload-sessions", post(controller::member_upload_session))
+        // The handler enforces its own size limits while streaming, so axum's 2 MiB default is lifted here.
+        .route(
+            "/api/v1/captures/{id}/upload/{kind}",
+            put(controller::member_upload).layer(DefaultBodyLimit::disable()),
+        )
         .route("/api/v1/captures/{id}/finalize", post(controller::member_finalize))
 }
 

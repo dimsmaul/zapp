@@ -58,6 +58,17 @@ pub(super) async fn identify(db: &Database, input: Credentials, register: bool) 
         "user": { "id": user_id, "email": email }, "workspaceId": null }))
 }
 
+/// Gives the signed-in user a second, independent session, so the browser extension can sign in through the
+/// website and later sign out (or be revoked) without touching the website's own session.
+pub(super) async fn derive_session(db: &Database, session: &super::model::Session) -> Result<Value, ApiError> {
+    let email = repository::user_email(db, &session.user_id).await?;
+    let token = new_secret("zs_").map_err(|_| ApiError::INTERNAL)?;
+    let expires_at = DateTime::from_millis(DateTime::now().timestamp_millis() + 86_400_000);
+    repository::begin_session(db, &session.user_id, &token, expires_at).await?;
+    Ok(json!({ "token": token, "expiresAt": expires_at.try_to_rfc3339_string().map_err(|_| ApiError::INTERNAL)?,
+        "user": { "id": session.user_id, "email": email }, "workspaceId": null }))
+}
+
 fn hash_password(password: &str) -> Result<String, ApiError> {
     let mut salt = [0; 16];
     OsRng.try_fill_bytes(&mut salt).map_err(|_| ApiError::INTERNAL)?;
