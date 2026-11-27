@@ -64,18 +64,28 @@ input, select, textarea { min-width: 0; width: 100%; }
 .muted { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-.brand .quiet { margin-left: auto; }
+.brand h1 { margin-right: auto; }
 .logo { width: 30px; height: 30px; flex: none; }
-.popup { width: 350px; padding: 16px; }
+.popup { width: 350px; padding: 18px; }
+html[data-embedded="true"] .popup { width: auto; }
+html:not([data-embedded="true"]) #close-panel { display: none; }
 .popup h2 + p { margin-top: 4px; }
-.action { min-height: 48px; justify-content: flex-start; text-align: left; }
-.action svg { width: 18px; height: 18px; flex: none; }
-.action-group { display: grid; grid-template-columns: 1fr auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
-.action-group > button { border: 0; border-radius: 0; }
-.action-group .quiet { border-left: 1px solid var(--line); }
+.small { min-height: 30px; padding: 4px 10px; font-size: 13px; }
+.icon { min-height: 30px; width: 30px; padding: 0; }
+.icon svg { width: 16px; height: 16px; }
+.target { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--muted-bg); }
+.label { color: var(--muted); font-size: 12px; font-weight: 550; }
+.target p { font-size: 13px; font-weight: 550; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.action-card { flex-direction: column; gap: 10px; min-height: 92px; padding: 14px 10px; border-radius: var(--radius-lg); }
+.action-card svg { width: 22px; height: 22px; }
 .inset { border: 1px solid var(--line); padding: 12px; border-radius: var(--radius); background: var(--muted-bg); }
-.footer { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; }
+.footer { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 10px; }
 .drafts { margin-top: 8px; }
+.rec-head { display: flex; align-items: center; gap: 8px; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
 [role="status"] { margin-bottom: 10px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 [data-error="true"] { color: var(--danger); }
 output { font-size: 26px; font-variant-numeric: tabular-nums; }

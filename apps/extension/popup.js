@@ -3,6 +3,25 @@ import { draftIds } from './store.js'
 
 const $ = (id) => document.getElementById(id)
 const screens = ['connect', 'login', 'workspace', 'capture', 'recording']
+
+// Opened from the toolbar icon, this page runs inside a panel on the website. On pages that block
+// that, Chrome shows it as a regular popup instead. Both use the same code.
+const embedded = window.top !== window
+if (embedded) {
+  document.documentElement.dataset.embedded = 'true'
+  const main = document.querySelector('main')
+  new ResizeObserver(() => {
+    parent.postMessage({ type: 'zapp-panel-size', height: main.offsetHeight }, '*')
+  }).observe(main)
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closePanel()
+  })
+}
+
+function closePanel() {
+  if (embedded) parent.postMessage('zapp-panel-close', '*')
+  else window.close()
+}
 let account
 let timer
 let busy = false
@@ -148,10 +167,10 @@ act($('logout'), 'click', async () => {
 })
 
 act($('switch-workspace'), 'click', showWorkspace)
-act($('screenshot'), 'click', async () => { await send('screenshot'); window.close() })
+act($('screenshot'), 'click', async () => { await send('screenshot'); closePanel() })
 act($('record'), 'click', async () => {
   await send('start')
-  window.close()
+  closePanel()
 })
 act($('pause'), 'click', async () => {
   await send('toggle-pause')
@@ -159,7 +178,7 @@ act($('pause'), 'click', async () => {
   if (state) showRecording(state)
   else await showCapture()
 })
-act($('stop'), 'click', async () => { await send('stop'); window.close() })
+act($('stop'), 'click', async () => { await send('stop'); closePanel() })
 act($('show-tabs'), 'click', async () => {
   const picker = $('tab-picker')
   if (picker.hidden) {
@@ -180,8 +199,10 @@ act($('tab-picker'), 'submit', async () => {
   } else {
     await send('select-tab', { tabId: id })
   }
-  window.close()
+  closePanel()
 })
+
+$('close-panel').addEventListener('click', closePanel)
 
 $('drafts').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('preview.html') }))
 

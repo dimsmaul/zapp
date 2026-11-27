@@ -12,6 +12,42 @@ chrome.runtime.onInstalled.addListener(() => {
   void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => {})
 })
 
+const popupUrl = chrome.runtime.getURL('popup.html')
+const PANEL_TTL_MS = 6 * 60 * 60 * 1000
+
+async function hidePanel(tabId) {
+  await chrome.tabs.sendMessage(tabId, { to: 'panel', type: 'close' }, { frameId: 0 }).catch(() => {})
+}
+
+// Clicking the toolbar icon opens the Zapp panel inside the page, which we can style freely.
+async function openPanel(tab) {
+  if (!tab?.id) return
+  const nonce = crypto.randomUUID()
+  try {
+    await chrome.storage.session.set({ [`panel:${tab.id}`]: { nonce, expiresAt: Date.now() + PANEL_TTL_MS } })
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['panel-overlay.js'] })
+    const shown = await chrome.tabs.sendMessage(tab.id, { to: 'panel', type: 'toggle', url: `${popupUrl}?panel=${nonce}` }, { frameId: 0 })
+    if (!shown) throw new Error('The panel could not open.')
+  } catch {
+    // Pages that block scripts (chrome://, the Web Store) get the regular popup instead.
+    await chrome.storage.session.remove(`panel:${tab.id}`).catch(() => {})
+    await chrome.action.setPopup({ tabId: tab.id, popup: 'popup.html' }).catch(() => {})
+    await chrome.action.openPopup().catch(() => {})
+  }
+}
+
+chrome.action.onClicked.addListener((tab) => { void openPanel(tab) })
+
+// The popup page is trusted when it is the toolbar popup (no tab), or the panel we opened in a tab,
+// which proves itself with the one-off nonce in its URL. A website that frames popup.html has neither.
+async function fromPopup(sender) {
+  if (!sender.tab) return sender.url === popupUrl
+  if (sender.frameId === 0 || !sender.url?.startsWith(`${popupUrl}?panel=`)) return false
+  const key = `panel:${sender.tab.id}`
+  const { [key]: panel } = await chrome.storage.session.get(key)
+  return Boolean(panel) && panel.expiresAt > Date.now() && sender.url === `${popupUrl}?panel=${panel.nonce}`
+}
+
 async function recorder(type, fields = {}) {
   const result = await chrome.runtime.sendMessage({ to: 'recorder', type, ...fields })
   if (!result?.ok) throw new Error(result?.error ?? 'The recorder is unavailable.')
@@ -65,6 +101,7 @@ async function start() {
     const { preferredTab } = await chrome.storage.session.get('preferredTab')
     if (preferredTab && tab.id !== preferredTab) throw new Error('Open Zapp from the selected tab to start recording.')
     const draft = await makeDraft('video', tab)
+    await hidePanel(tab.id) // keep the panel out of the recording
     await openRecorder()
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id })
     const startedAt = await recorder('start', { streamId, draft })
@@ -178,6 +215,8 @@ async function screenshot() {
   const tab = await activeTab()
   const draft = await makeDraft('screenshot', tab)
   if ((await activeTab()).id !== tab.id) throw new Error('The active tab changed. Try again.')
+  await hidePanel(tab.id) // keep the panel out of the screenshot
+  await new Promise((resolve) => setTimeout(resolve, 200))
   const data = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
   const blob = await (await fetch(data)).blob()
   await saveDraft({ ...draft, blob, events: [], warnings: [] })
@@ -226,7 +265,7 @@ async function handle(message, sender) {
     if (message.type === 'recorder-ended' && message.id === recording?.draft.id) return stop()
     return
   }
-  if (sender.url !== chrome.runtime.getURL('popup.html')) throw new Error('Unrecognized extension page.')
+  if (!(await fromPopup(sender))) throw new Error('Unrecognized extension page.')
   switch (message.type) {
     case 'state': return recording ? status(recording) : null
     case 'select-tab': return switchTab(message.tabId)
@@ -273,7 +312,7 @@ chrome.tabs.onUpdated.addListener((id, change) => {
 
 chrome.tabs.onRemoved.addListener((id) => {
   if (recording?.tabId === id) void stop()?.catch(() => {})
-  void chrome.storage.session.remove(`preview:${id}`).catch(() => {})
+  void chrome.storage.session.remove([`preview:${id}`, `panel:${id}`]).catch(() => {})
   void chrome.storage.session.get('preferredTab').then(({ preferredTab }) => {
     if (preferredTab === id) return chrome.storage.session.remove('preferredTab')
   })
