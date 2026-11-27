@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDown, FolderOpen, Layers3, LogOut } from "lucide-react";
+import { ChevronRight, FolderOpen, Layers3, LogOut } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -64,7 +63,7 @@ function WorkspaceNavigation() {
                 <Link to="/workspaces" onClick={() => setOpenMobile(false)}>
                   <Layers3 />
                   <span className="min-w-0 flex-1 truncate">{active?.name ?? "Zapp workspaces"}</span>
-                  <ChevronsUpDown />
+                  <ChevronRight />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -72,7 +71,6 @@ function WorkspaceNavigation() {
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === "/reports"} tooltip="Reports">
@@ -98,11 +96,12 @@ function WorkspaceNavigation() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <div className="flex items-center gap-3 border-b px-4 py-2">
-          <SidebarTrigger aria-label="Toggle navigation" />
-          <span className="text-sm font-medium">Zapp</span>
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="absolute left-3 top-4 z-10 sm:left-4">
+            <SidebarTrigger aria-label="Toggle navigation" />
+          </div>
+          <Outlet />
         </div>
-        <Outlet />
       </SidebarInset>
     </>
   );

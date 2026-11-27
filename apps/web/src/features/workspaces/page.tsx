@@ -52,10 +52,11 @@ export function WorkspacesPage() {
   }
 
   return (
-    <section className="grid w-full max-w-5xl gap-6 p-4 sm:p-6 lg:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <section className="w-full">
+      <header className="flex min-h-16 items-center border-b pl-14 pr-4 sm:pl-16 sm:pr-6">
         <h1 className="text-2xl font-semibold">Workspaces</h1>
       </header>
+      <div className="grid w-full max-w-5xl gap-6 p-4 sm:p-6 lg:p-8">
       {error && <Alert variant="destructive"><AlertDescription>{signInAgain ? "Your session has expired. Sign in again." : errorMessage(error)}</AlertDescription></Alert>}
       <Card>
         <CardHeader><CardTitle>Your workspaces</CardTitle><CardDescription>Choose a workspace to view its reports.</CardDescription></CardHeader>
@@ -89,6 +90,7 @@ export function WorkspacesPage() {
           </form>
         </CardContent>
       </Card>
+      </div>
     </section>
   );
 }
