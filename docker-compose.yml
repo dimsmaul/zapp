@@ -32,7 +32,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: zapp/apps/server/Dockerfile
+      dockerfile: apps/server/Dockerfile
     command: ["migrate"]
     environment:
       ZAPP_MONGODB_URI: "mongodb://mongo:27017/?replicaSet=zapp"
@@ -45,7 +45,7 @@ services:
     init: true
     build:
       context: .
-      dockerfile: zapp/apps/server/Dockerfile
+      dockerfile: apps/server/Dockerfile
     environment:
       ZAPP_BIND_ADDR: "0.0.0.0:8080"
       ZAPP_WEB_ORIGIN: "${ZAPP_WEB_ORIGIN:-http://localhost:5173}"
@@ -62,12 +62,39 @@ services:
     ports:
       - "127.0.0.1:${ZAPP_SERVER_PORT:-8080}:8080"
 
+  worker:
+    profiles: ["worker"]
+    init: true
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    command: ["worker"]
+    environment:
+      ZAPP_MONGODB_URI: "mongodb://mongo:27017/?replicaSet=zapp"
+      ZAPP_MONGODB_DATABASE: "zapp"
+      ZAPP_STORAGE_BUCKET: "${ZAPP_STORAGE_BUCKET:-}"
+      ZAPP_STORAGE_REGION: "${ZAPP_STORAGE_REGION:-us-east-1}"
+      ZAPP_STORAGE_ENDPOINT: "${ZAPP_STORAGE_ENDPOINT:-}"
+      ZAPP_STORAGE_ACCESS_KEY_ID: "${ZAPP_STORAGE_ACCESS_KEY_ID:-}"
+      ZAPP_STORAGE_SECRET_ACCESS_KEY: "${ZAPP_STORAGE_SECRET_ACCESS_KEY:-}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
       - "127.0.0.1:${ZAPP_WEB_PORT:-5173}:80"
+
+  s3mock:
+    image: adobe/s3mock:5.1.0
+    profiles: ["test"]
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: test-bucket
+    ports:
+      - "127.0.0.1:${ZAPP_TEST_S3_PORT:-19090}:9090"
 
 volumes:
   mongo_data:

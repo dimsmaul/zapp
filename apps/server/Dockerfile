@@ -1,7 +1,7 @@
 FROM rust:1.93.1-bookworm AS build
 WORKDIR /app
-COPY zapp/apps/server/Cargo.toml zapp/apps/server/Cargo.lock ./
-COPY zapp/apps/server/src ./src
+COPY apps/server/Cargo.toml apps/server/Cargo.lock ./
+COPY apps/server/src ./src
 RUN cargo build --locked --release
 
 FROM debian:bookworm-slim

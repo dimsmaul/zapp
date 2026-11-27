@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.test.example
