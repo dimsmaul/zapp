@@ -54,6 +54,21 @@ const workspaces = createRoute({
   component: lazyRouteComponent(() => import("@/features/workspaces/page"), "WorkspacesPage"),
 });
 
+const workspaceSettings = createRoute({
+  getParentRoute: () => signedIn,
+  path: "/workspace/settings",
+  beforeLoad: () => {
+    if (!useSession.getState().session?.workspaceId) throw redirect({ to: "/workspaces" });
+  },
+  component: lazyRouteComponent(() => import("@/features/workspaces/settings-page"), "WorkspaceSettingsPage"),
+});
+
+const invite = createRoute({
+  getParentRoute: () => root,
+  path: "/invite/$token",
+  component: lazyRouteComponent(() => import("@/features/workspaces/invite-page"), "InvitePage"),
+});
+
 const reports = createRoute({
   getParentRoute: () => signedIn,
   path: "/reports",
@@ -71,7 +86,7 @@ const share = createRoute({
 });
 
 export const router = createRouter({
-  routeTree: root.addChildren([index, login, signedIn.addChildren([workspaces, reports]), share]),
+  routeTree: root.addChildren([index, login, invite, signedIn.addChildren([workspaces, workspaceSettings, reports]), share]),
   defaultPreload: "intent",
 });
 

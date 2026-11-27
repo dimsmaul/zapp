@@ -108,9 +108,9 @@ function WorkspaceNavigation() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton size="lg" tooltip="Switch workspace" aria-label="Switch workspace">
-                    <Layers3 />
-                    <span className="min-w-0 flex-1 truncate">{active?.name ?? "Select workspace"}</span>
-                    <ChevronsUpDown />
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"><Layers3 /></span>
+                    <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{active?.name ?? "Select workspace"}</span>
+                    <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
@@ -123,6 +123,11 @@ function WorkspaceNavigation() {
                     ))}
                   </DropdownMenuRadioGroup>
                   <DropdownMenuSeparator />
+                  {session?.workspaceId && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/workspace/settings" onClick={() => setOpenMobile(false)}><Settings />Workspace settings</Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onSelect={() => setCreating(true)}><Plus />Create new workspace</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -157,8 +162,8 @@ function WorkspaceNavigation() {
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton size="lg" tooltip={email} aria-label="Account menu">
                     <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold uppercase text-primary-foreground">{email.charAt(0) || "?"}</span>
-                    <span className="min-w-0 flex-1 truncate">{email}</span>
-                    <ChevronsUpDown />
+                    <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{email}</span>
+                    <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
