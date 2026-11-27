@@ -1,5 +1,8 @@
 import { api, ApiError, currentAccount, hostPattern, send, serverOrigin } from './api.js'
+import { hydrate, icon } from './lucide.js'
 import { getDraft, listDrafts, removeDraft, saveDraft } from './store.js'
+
+hydrate()
 
 const $ = (id) => document.getElementById(id)
 const id = new URL(location.href).searchParams.get('id')
@@ -20,13 +23,46 @@ function time(seconds) {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
 }
 
+const SKIP_SECONDS = 5
+let idleTimer
+
+// A recording from MediaRecorder often reports no duration, so fall back to the one we measured.
+function knownDuration() {
+  return Number.isFinite(video.duration) && video.duration > 0 ? video.duration : (draft.durationMs ?? 0) / 1000
+}
+
+function setIcon(button, name, filled = false) {
+  button.replaceChildren(icon(name, { filled }))
+}
+
 function updatePlayer() {
-  const duration = Number.isFinite(video.duration) ? video.duration : (draft.durationMs ?? 0) / 1000
-  $('seek').max = duration
-  $('seek').value = video.currentTime
+  const duration = knownDuration()
+  const ratio = duration > 0 ? Math.min(video.currentTime / duration, 1) : 0
+  $('seek-fill').style.width = `${ratio * 100}%`
+  $('seek-thumb').style.left = `${ratio * 100}%`
+  $('seek').setAttribute('aria-valuemax', String(Math.floor(duration)))
+  $('seek').setAttribute('aria-valuenow', String(Math.floor(video.currentTime)))
+  $('seek').setAttribute('aria-valuetext', `${time(video.currentTime)} of ${time(duration)}`)
   $('clock').textContent = `${time(video.currentTime)} / ${time(duration)}`
-  $('play').textContent = video.paused ? 'Play' : 'Pause'
+  setIcon($('play'), video.paused ? 'play' : 'pause', true)
   $('play').setAttribute('aria-label', video.paused ? 'Play preview' : 'Pause preview')
+  const silent = video.muted || video.volume === 0
+  setIcon($('mute'), silent ? 'volume-x' : 'volume-2')
+  $('mute').setAttribute('aria-label', silent ? 'Unmute' : 'Mute')
+  $('volume').value = silent ? '0' : String(video.volume)
+}
+
+function seekTo(seconds) {
+  const duration = knownDuration()
+  video.currentTime = Math.min(Math.max(0, seconds), duration || seconds)
+  updatePlayer()
+}
+
+// Like YouTube: the controls hide after a moment while the video plays, and return on pointer move.
+function wake() {
+  $('player').classList.remove('is-idle')
+  clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => { if (!video.paused) $('player').classList.add('is-idle') }, 2500)
 }
 
 function showMedia() {
@@ -40,23 +76,64 @@ function showMedia() {
   video.src = url
   video.hidden = false
   $('player').hidden = false
-  for (const event of ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'ended']) {
+  setIcon($('fullscreen'), 'maximize')
+  for (const event of ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'ended', 'volumechange']) {
     video.addEventListener(event, updatePlayer)
   }
+  // timeupdate only fires a few times a second, so follow the frame rate while playing.
+  video.addEventListener('play', function tick() {
+    if (video.paused) return
+    updatePlayer()
+    requestAnimationFrame(tick)
+  })
+  video.addEventListener('pause', wake)
   video.addEventListener('error', () => status('The browser could not play this recording.', true))
-  $('play').addEventListener('click', () => {
+
+  const toggle = () => {
     if (video.paused) void video.play().catch(() => status('Could not play this recording.', true))
     else video.pause()
+  }
+  $('play').addEventListener('click', toggle)
+  video.addEventListener('click', toggle)
+  $('back').addEventListener('click', () => seekTo(video.currentTime - SKIP_SECONDS))
+  $('forward').addEventListener('click', () => seekTo(video.currentTime + SKIP_SECONDS))
+  $('mute').addEventListener('click', () => { video.muted = !video.muted })
+  $('volume').addEventListener('input', (event) => {
+    video.muted = false
+    video.volume = Number(event.target.value)
   })
-  $('seek').addEventListener('input', (event) => { video.currentTime = Number(event.target.value) })
+  $('speed').addEventListener('change', (event) => { video.playbackRate = Number(event.target.value) })
+
+  const seek = $('seek')
+  let scrubbing = false
+  const fromPointer = (event) => {
+    const rect = seek.getBoundingClientRect()
+    if (rect.width > 0) seekTo(Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1) * knownDuration())
+  }
+  seek.addEventListener('pointerdown', (event) => { scrubbing = true; seek.setPointerCapture(event.pointerId); fromPointer(event) })
+  seek.addEventListener('pointermove', (event) => { if (scrubbing) fromPointer(event) })
+  seek.addEventListener('pointerup', () => { scrubbing = false })
+  seek.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    seekTo(video.currentTime + (event.key === 'ArrowRight' ? SKIP_SECONDS : -SKIP_SECONDS))
+  })
+
   $('fullscreen').addEventListener('click', async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen()
-      else await video.parentElement.requestFullscreen()
+      else await $('media').requestFullscreen()
     } catch {
       status('Fullscreen is unavailable.', true)
     }
   })
+  document.addEventListener('fullscreenchange', () => {
+    const full = document.fullscreenElement === $('media')
+    setIcon($('fullscreen'), full ? 'minimize' : 'maximize')
+    $('fullscreen').setAttribute('aria-label', full ? 'Exit fullscreen' : 'Fullscreen')
+  })
+  $('media').addEventListener('pointermove', wake)
+  $('media').addEventListener('pointerleave', () => { if (!video.paused) $('player').classList.add('is-idle') })
   updatePlayer()
 }
 
@@ -88,6 +165,7 @@ function showShare(url) {
   $('grant').hidden = true
   $('discard').hidden = true
   $('title').readOnly = true
+  $('description').readOnly = true
 }
 
 async function persist(fields) {
@@ -147,15 +225,20 @@ async function publish() {
   await recoverReport(account)
   if (!draft.published) {
     const title = draft.uploadKey ? draft.title : $('title').value.trim()
+    const description = draft.uploadKey ? (draft.description ?? '') : $('description').value.trim()
     if (!title) throw new Error('Enter a report title.')
     if (!draft.uploadKey || Date.now() - draft.uploadStartedAt >= 14 * 60 * 1000) {
-      await persist({ uploadKey: crypto.randomUUID(), uploadStartedAt: Date.now(), reportId: null, title })
+      await persist({ uploadKey: crypto.randomUUID(), uploadStartedAt: Date.now(), reportId: null, title, description })
     }
     $('title').readOnly = true
+    $('description').readOnly = true
     status('Preparing upload…')
     const targets = await api(account, '/api/v1/captures/upload-sessions', {
       method: 'POST', idempotencyKey: draft.uploadKey,
-      body: { attachmentType: draft.type, captureContentType: draft.blob.type, hasDebuggerPayload: Boolean(draft.events.length), title },
+      body: {
+        attachmentType: draft.type, captureContentType: draft.blob.type, hasDebuggerPayload: Boolean(draft.events.length), title,
+        ...(description ? { description } : {}),
+      },
     })
     if (!targets.bugReportId) throw new Error('The server did not return a capture ID.')
     await persist({ reportId: targets.bugReportId })
@@ -220,6 +303,11 @@ $('discard').addEventListener('click', () => void run(async () => {
   if (embedded) window.parent.postMessage('zapp-preview-close', '*')
   else location.href = 'preview.html'
 }))
+// Closing keeps the draft. Discard (the trash button) is the only thing that deletes it.
+$('close').addEventListener('click', () => {
+  if (embedded) window.parent.postMessage('zapp-preview-close', '*')
+  else location.href = 'preview.html'
+})
 $('copy').addEventListener('click', () => void run(async () => {
   await navigator.clipboard.writeText($('link').value)
   await removeDraft(id)
@@ -245,15 +333,12 @@ async function init() {
   $('review').hidden = false
   $('title').value = draft.title
   $('title').readOnly = Boolean(draft.uploadKey)
+  $('description').value = draft.description ?? ''
+  $('description').readOnly = Boolean(draft.uploadKey)
   if (draft.blob) showMedia()
   if (draft.shareUrl) {
     showShare(draft.shareUrl)
     return
-  }
-  $('diagnostics').textContent = draft.events.length ? `${draft.events.length} captured events` : 'No diagnostic events'
-  if (draft.warnings.length) {
-    $('warnings').textContent = draft.warnings.join(' ')
-    $('warnings').hidden = false
   }
 }
 

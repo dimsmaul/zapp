@@ -1,5 +1,8 @@
 import { api, ApiError, currentAccount, hostPattern, send, serverOrigin } from './api.js'
+import { hydrate } from './lucide.js'
 import { draftIds } from './store.js'
+
+hydrate()
 
 const $ = (id) => document.getElementById(id)
 const screens = ['connect', 'login', 'workspace', 'capture', 'recording']

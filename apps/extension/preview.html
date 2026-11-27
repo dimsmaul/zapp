@@ -12,27 +12,55 @@
       <header class="brand"><img class="logo" src="logo.svg" alt=""><h1>Capture preview</h1><a id="all-drafts" href="preview.html">All drafts</a></header>
       <p id="status" role="status" aria-live="polite" hidden></p>
       <section id="draft-list" class="stack" hidden><h2>Local drafts</h2><div id="draft-items" class="stack"></div></section>
+
       <section id="review" class="review" hidden>
-        <div class="media">
-          <video id="video" preload="metadata" playsinline hidden></video>
-          <img id="image" alt="Screenshot of the captured tab" hidden>
-          <div id="player" class="player" hidden>
-            <button id="play" type="button" aria-label="Play preview">Play</button>
-            <input id="seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Playback position">
-            <span id="clock">0:00 / 0:00</span>
-            <button id="fullscreen" type="button">Fullscreen</button>
+        <div class="stage">
+          <div class="toolbar">
+            <button id="close" type="button" class="icon-button" aria-label="Close preview" title="Close (your draft stays saved)"><span data-icon="x"></span></button>
+            <button id="discard" type="button" class="icon-button" aria-label="Discard draft" title="Discard draft"><span data-icon="trash"></span></button>
+          </div>
+          <div class="media" id="media">
+            <video id="video" preload="metadata" playsinline hidden></video>
+            <img id="image" alt="Screenshot of the captured tab" hidden>
+            <div id="player" class="player" hidden>
+              <div id="seek" class="seek" role="slider" tabindex="0" aria-label="Playback position" aria-valuemin="0" aria-valuenow="0"><div class="seek-track"><div id="seek-fill" class="seek-fill"></div><div id="seek-thumb" class="seek-thumb"></div></div></div>
+              <div class="player-row">
+                <div class="player-group">
+                  <div class="pill">
+                    <button id="play" type="button" aria-label="Play preview"></button>
+                    <button id="back" type="button" aria-label="Back 5 seconds" title="Back 5 seconds"><span data-icon="rewind" data-filled></span></button>
+                    <button id="forward" type="button" aria-label="Forward 5 seconds" title="Forward 5 seconds"><span data-icon="fast-forward" data-filled></span></button>
+                    <div class="volume">
+                      <button id="mute" type="button" aria-label="Mute"></button>
+                      <input id="volume" class="volume-range" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+                    </div>
+                  </div>
+                  <span id="clock" class="pill time">0:00 / 0:00</span>
+                </div>
+                <div class="pill">
+                  <select id="speed" aria-label="Playback speed">
+                    <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
+                    <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+                  </select>
+                  <button id="fullscreen" type="button" aria-label="Fullscreen"></button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <form id="save-form" class="stack details">
-          <div><h2>Report details</h2><p class="muted" id="diagnostics"></p></div>
-          <label>Title<input id="title" name="title" maxlength="180" required></label>
-          <div id="warnings" class="muted" hidden></div>
-          <button id="save" class="primary" type="submit">Save &amp; get link</button>
-          <button id="grant" type="button" hidden>Allow upload to storage</button>
-          <button id="discard" class="quiet" type="button">Discard draft</button>
-          <div id="share" class="stack" hidden>
-            <label>Share link<input id="link" type="url" readonly></label>
-            <div class="row"><button id="copy" type="button">Copy link</button><a id="open-report" target="_blank" rel="noopener noreferrer">Open report</a></div>
+
+        <form id="save-form" class="panel">
+          <div class="panel-head">
+            <button id="save" class="primary" type="submit">Create</button>
+          </div>
+          <div class="panel-body">
+            <input id="title" name="title" class="title-input" placeholder="Title" aria-label="Title" maxlength="180" required autocomplete="off">
+            <textarea id="description" name="description" class="description-input" placeholder="Add a description…" aria-label="Description" rows="6" maxlength="12000"></textarea>
+            <button id="grant" type="button" hidden>Allow upload to storage</button>
+            <div id="share" class="stack share" hidden>
+              <label>Share link<input id="link" type="url" readonly></label>
+              <div class="row"><button id="copy" type="button">Copy link</button><a id="open-report" target="_blank" rel="noopener noreferrer">Open report</a></div>
+            </div>
           </div>
         </form>
       </section>

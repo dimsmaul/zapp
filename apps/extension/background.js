@@ -204,9 +204,14 @@ async function preview(tabId, id) {
     await chrome.scripting.executeScript({ target: { tabId }, files: ['review-overlay.js'] })
     const shown = await chrome.tabs.sendMessage(tabId, { to: 'review', url }, { frameId: 0 })
     if (!shown) throw new Error('Preview dialog could not open.')
-  } catch {
+  } catch (error) {
+    // Open the preview in a window of its own rather than leaving the capture unseen.
+    console.warn('Zapp could not show the capture preview on this page.', error)
     await chrome.storage.session.remove(key).catch(() => {})
     await chrome.action.setBadgeText({ text: 'DRAFT', tabId }).catch(() => {})
+    await chrome.windows.create({
+      url: chrome.runtime.getURL(`preview.html?id=${encodeURIComponent(id)}`), type: 'popup', width: 1180, height: 760,
+    }).catch(() => {})
   }
 }
 

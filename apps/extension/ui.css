@@ -70,6 +70,7 @@ input, select, textarea { min-width: 0; width: 100%; }
 html[data-embedded="true"] .popup { width: auto; }
 html:not([data-embedded="true"]) #close-panel { display: none; }
 .popup h2 + p { margin-top: 4px; }
+[data-icon] { display: inline-flex; }
 .small { min-height: 30px; padding: 4px 10px; font-size: 13px; }
 .icon { min-height: 30px; width: 30px; padding: 0; }
 .icon svg { width: 16px; height: 16px; }
