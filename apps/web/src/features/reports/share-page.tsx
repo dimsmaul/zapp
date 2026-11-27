@@ -1,21 +1,21 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, getRouteApi, useLocation } from "@tanstack/react-router";
-import { Check, Home, LayoutGrid, Link2, Search } from "lucide-react";
+import { Check, ChevronDown, Globe, Home, LayoutGrid, Link2, LocateFixed, Lock, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isActive, useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
-import { type DebuggerStatus, type TimelineEvent, getNetworkRequest, getReport, listEvents } from "./api";
+import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, getNetworkRequest, getReport, listEvents, updateVisibility } from "./api";
+import { type EventRow, EventTable } from "./event-table";
 import { NetworkInspector } from "./network-inspector";
 import { type NetworkRow, NetworkTable } from "./network-table";
-import { clock, ReportPlayer, seekVideo } from "./player";
+import { ReportPlayer, seekVideo } from "./player";
 
 const route = getRouteApi("/s/$id");
 
@@ -80,6 +80,22 @@ function resourceGroup(event: TimelineEvent): Exclude<TypeKey, "all"> {
   return "other";
 }
 
+function eventRow(event: TimelineEvent): EventRow {
+  const data = event.data;
+  if (event.category === "action") {
+    return {
+      id: event.id, offsetMs: event.offsetMs, category: "action",
+      verb: event.kind.endsWith("click") ? "Clicked" : event.kind.replace(/^action\./, ""),
+      text: typeof data?.targetLabel === "string" ? data.targetLabel : "",
+    };
+  }
+  return {
+    id: event.id, offsetMs: event.offsetMs, category: event.category,
+    level: typeof data?.level === "string" ? data.level : undefined,
+    text: typeof data?.message === "string" ? data.message : event.kind,
+  };
+}
+
 function networkRow(event: TimelineEvent): NetworkRow {
   const { method, status, path, host, type } = requestParts(event);
   const duration = event.data?.durationMs;
@@ -124,7 +140,7 @@ export function SharePage() {
   const shareToken = new URLSearchParams(hash.replace(/^#/, "")).get("share") || undefined;
   const access = { token, shareToken };
   const accessKey = ["report", id, token, shareToken] as const;
-  const [view, setView] = useState<"timeline" | "console" | "network">("timeline");
+  const [view, setView] = useState<"console" | "network" | "action">("console");
   const eventView = view === "network" ? "network" : "events";
   const [selection, setSelection] = useState<{ reportId: string; requestId: string }>();
   const requestId = selection?.reportId === id ? selection.requestId : undefined;
@@ -133,7 +149,15 @@ export function SharePage() {
   const [filter, setFilter] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeKey>("all");
+  const [follow, setFollow] = useState(false);
+  const [playbackMs, setPlaybackMs] = useState(0);
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
+  const queryClient = useQueryClient();
+  const setVisibility = useMutation({
+    mutationFn: (value: Visibility) => updateVisibility(token!, id, value),
+    // Patch only the cached visibility; refetching would re-sign the media URL and restart the player.
+    onSuccess: (result) => queryClient.setQueryData<PlaybackReport>(accessKey, (old) => old && { ...old, visibility: result.visibility }),
+  });
 
   const report = useQuery({
     queryKey: accessKey,
@@ -154,10 +178,13 @@ export function SharePage() {
       return status === "pending" || status === "processing" ? 3000 : false;
     },
   });
+  // The drawer keeps showing the last request while it slides out, so remember which one it was.
+  const [lastRequestId, setLastRequestId] = useState<string>();
+  const drawerId = requestId ?? lastRequestId;
   const detail = useQuery({
-    queryKey: [...accessKey, "network-detail", requestId],
-    queryFn: ({ signal }) => getNetworkRequest(id, requestId!, access, signal),
-    enabled: view === "network" && Boolean(requestId),
+    queryKey: [...accessKey, "network-detail", drawerId],
+    queryFn: ({ signal }) => getNetworkRequest(id, drawerId!, access, signal),
+    enabled: view === "network" && Boolean(drawerId),
     retry: false,
   });
   const networkDetail = detail.data;
@@ -166,6 +193,7 @@ export function SharePage() {
   const term = filter.trim().toLowerCase();
   const rows = allEvents.filter((event) => {
     if (view === "console" && event.category !== "console") return false;
+    if (view === "action" && event.category !== "action") return false;
     if (view === "network" && errorsOnly && !isNetworkError(event)) return false;
     if (view === "network" && typeFilter !== "all" && resourceGroup(event) !== typeFilter) return false;
     return !term || `${event.kind} ${describe(event)}`.toLowerCase().includes(term);
@@ -180,6 +208,17 @@ export function SharePage() {
     };
   });
   const inspecting = view === "network" && Boolean(requestId);
+  const [drawerMounted, setDrawerMounted] = useState(false);
+  useEffect(() => {
+    if (requestId) setLastRequestId(requestId);
+    if (inspecting) {
+      setDrawerMounted(true);
+      return;
+    }
+    // Unmount only after the slide-out animation has finished.
+    const timer = setTimeout(() => setDrawerMounted(false), 220);
+    return () => clearTimeout(timer);
+  }, [inspecting, requestId]);
 
   // Infinite scroll: load the next page whenever the sentinel below the list scrolls into view.
   const sentinel = useRef<HTMLDivElement>(null);
@@ -193,6 +232,34 @@ export function SharePage() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, allEvents.length, view]);
+
+  // Follow timeline: track the video's position and highlight the event that is currently playing.
+  const isVideo = report.data?.attachmentType === "video";
+  useEffect(() => {
+    const player = video.current;
+    if (!(follow && isVideo && player)) return;
+    const sync = () => setPlaybackMs(player.currentTime * 1000);
+    sync();
+    player.addEventListener("timeupdate", sync);
+    player.addEventListener("seeked", sync);
+    return () => {
+      player.removeEventListener("timeupdate", sync);
+      player.removeEventListener("seeked", sync);
+    };
+  }, [follow, isVideo]);
+  let activeId: string | undefined;
+  if (follow && isVideo) {
+    let latest = -1;
+    for (const row of rows) {
+      if (row.offsetMs <= playbackMs && row.offsetMs >= latest) {
+        latest = row.offsetMs;
+        activeId = row.id;
+      }
+    }
+  }
+  useEffect(() => {
+    if (activeId) document.getElementById(`event-${activeId}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeId]);
   const debuggerStatus = events.data?.pages[0]?.debuggerStatus ?? report.data?.debuggerStatus;
   const unavailable = report.error instanceof ApiError && report.error.status === 404;
 
@@ -213,7 +280,7 @@ export function SharePage() {
     );
   }
 
-  const { title, description, attachmentType, attachmentUrl, createdAt, reporter } = report.data;
+  const { title, description, attachmentType, attachmentUrl, createdAt, reporter, visibility, canManage } = report.data;
 
   async function copyLink() {
     try {
@@ -237,7 +304,28 @@ export function SharePage() {
           ) : <span className="text-sm font-medium text-muted-foreground">Zapp report</span>}
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
+          <div className="inline-flex">
+            <Button className={canManage ? "rounded-r-none" : ""} onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
+            {canManage && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" aria-label="Change who can view" className="rounded-l-none border-l border-primary-foreground/25"><ChevronDown /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel>General access</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={visibility ?? "private"} onValueChange={(value) => setVisibility.mutate(value as Visibility)}>
+                    <DropdownMenuRadioItem value="private" className="items-start">
+                      <Lock className="mt-0.5" /><span className="grid"><span>Private</span><span className="text-xs text-muted-foreground">Only workspace members can open it</span></span>
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="public" className="items-start">
+                      <Globe className="mt-0.5" /><span className="grid"><span>Public</span><span className="text-xs text-muted-foreground">Anyone with the link can open it</span></span>
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+          {setVisibility.isError && <span role="alert" className="text-sm text-destructive">{errorMessage(setVisibility.error)}</span>}
           {copyState === "failed" && <span role="status" className="text-sm">Copy the URL from the address bar.</span>}
         </div>
       </header>
@@ -277,18 +365,18 @@ export function SharePage() {
             <h2 className="font-semibold">DevTools</h2>
             {debuggerStatus && <p className="text-xs text-muted-foreground">{debuggerMessage[debuggerStatus]}</p>}
           </header>
-          <div className="min-w-0 lg:overflow-auto">
-            <Tabs value={view} onValueChange={(value) => {
-              if (value === "timeline" || value === "console" || value === "network") setView(value);
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <Tabs className="min-h-0 flex-1 gap-0" value={view} onValueChange={(value) => {
+              if (value === "console" || value === "network" || value === "action") setView(value);
             }}>
-              <div className="sticky top-0 z-10 border-b bg-background px-4 pt-3 pb-2">
+              <div className="shrink-0 border-b px-4 pt-3 pb-2">
               <TabsList variant="line" aria-label="Debugger views" className="h-auto">
-                {(["console", "network", "timeline"] as const).map((tab) => (
+                {(["console", "network", "action"] as const).map((tab) => (
                   <TabsTrigger key={tab} value={tab} className="flex-none rounded-md border-transparent px-3 py-1.5 capitalize">{tab}</TabsTrigger>
                 ))}
               </TabsList>
               </div>
-              <TabsContent value={view}>
+              <TabsContent value={view} className="flex min-h-0 flex-1 flex-col">
                 <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2">
                   <div className="relative min-w-32 flex-1">
                     <Search size={16} aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
@@ -300,6 +388,11 @@ export function SharePage() {
                       Errors only
                     </label>
                   )}
+                  {attachmentType === "video" && (
+                    <Button size="sm" variant={follow ? "secondary" : "outline"} aria-pressed={follow} onClick={() => setFollow((value) => !value)}>
+                      <LocateFixed />Follow timeline
+                    </Button>
+                  )}
                 </div>
                 {view === "network" && (
                   <div className="flex flex-wrap gap-1.5 border-b px-4 py-2" role="group" aria-label="Resource type">
@@ -308,54 +401,43 @@ export function SharePage() {
                     ))}
                   </div>
                 )}
-                {events.isPending &&<div className="p-4"><Spinner aria-label="Loading diagnostic events" /></div>}
+                {/* Filter, chips, and the table header stay put; only the rows scroll. */}
+                <div className="min-h-0 flex-1 overflow-auto max-lg:max-h-[70svh]">
+                {events.isPending && <div className="p-4"><Spinner aria-label="Loading diagnostic events" /></div>}
                 {events.isError && <div className="p-4"><Alert variant="destructive"><AlertDescription>{errorMessage(events.error)}</AlertDescription></Alert></div>}
                 {events.isSuccess && rows.length === 0 && (
-                  <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view === "console" && events.hasNextPage ? "Loading more timeline entries to find console messages…" : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
+                  <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view !== "network" && events.hasNextPage ? `Loading more entries to find ${view === "console" ? "console messages" : "user actions"}…` : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
                 )}
                 {rows.length > 0 && view === "network" && (
-                  <div className="overflow-x-auto">
-                    <NetworkTable
-                      rows={rows.map(networkRow)}
-                      selectedId={requestId}
-                      onSelect={(rowId) => setSelection({ reportId: id, requestId: rowId })}
-                    />
-                  </div>
+                  <NetworkTable
+                    rows={rows.map(networkRow)}
+                    selectedId={requestId}
+                    activeId={activeId}
+                    onSelect={(rowId) => setSelection({ reportId: id, requestId: rowId })}
+                  />
                 )}
                 {rows.length > 0 && view !== "network" && (
-                  <Table>
-                    <TableHeader><TableRow>
-                      <TableHead>Time</TableHead><TableHead>Event</TableHead>
-                    </TableRow></TableHeader>
-                    <TableBody>
-                      {rows.map((event) => (
-                        <TableRow key={event.id}>
-                          <TableCell>
-                            {attachmentType === "video" ? (
-                              <Button variant="link" size="sm" onClick={() => seekVideo(video.current, event.offsetMs / 1000)}>{clock(event.offsetMs / 1000)}</Button>
-                            ) : clock(event.offsetMs / 1000)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="grid max-w-sm justify-items-start gap-1 whitespace-normal">
-                              <Badge variant="secondary">{event.kind}</Badge>
-                              <span className="break-all">{describe(event)}</span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <EventTable
+                    rows={rows.map(eventRow)}
+                    label={view === "console" ? "Console messages" : "User actions"}
+                    activeId={activeId}
+                    onSelect={attachmentType === "video" ? (row) => seekVideo(video.current, row.offsetMs / 1000) : undefined}
+                  />
                 )}
                 {events.hasNextPage && <div ref={sentinel} className="p-4" aria-live="polite">
                   {events.isFetchingNextPage && <Spinner aria-label="Loading more events" />}
                 </div>}
+                </div>
               </TabsContent>
             </Tabs>
           </div>
-          {inspecting && (
-            <div className="absolute inset-y-0 right-0 z-20 w-4/5 border-l bg-background shadow-2xl max-sm:w-full">
+          {(inspecting || drawerMounted) && (
+            <div
+              data-state={inspecting ? "open" : "closed"}
+              className="absolute inset-y-0 right-0 z-20 w-4/5 border-l bg-background shadow-2xl duration-200 fill-mode-forwards max-sm:w-full data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right motion-reduce:animate-none"
+            >
               <NetworkInspector
-                key={requestId}
+                key={drawerId}
                 detail={networkDetail}
                 loading={detail.isPending}
                 error={detail.error}

@@ -10,9 +10,15 @@ export type ReportSummary = {
   attachmentType: "video" | "screenshot";
   debuggerStatus: DebuggerStatus;
   createdAt: string;
+  /** Short-lived signed media URL for list thumbnails; null when storage is not configured. */
+  previewUrl: string | null;
+  /** True when the caller may change this report (owner, admin, or the reporter). */
+  canManage: boolean;
 };
 
-export type PlaybackReport = Pick<ReportSummary, "id" | "title" | "description" | "attachmentType" | "debuggerStatus" | "createdAt"> & {
+export type Visibility = ReportSummary["visibility"];
+
+export type PlaybackReport = Pick<ReportSummary, "id" | "title" | "description" | "attachmentType" | "debuggerStatus" | "createdAt" | "visibility" | "canManage"> & {
   /** Reporter email; only sent to signed-in workspace members. */
   reporter: string | null;
   attachmentUrl: string;
@@ -52,4 +58,10 @@ export function listEvents(id: string, view: "events" | "network", access: Repor
 
 export function getNetworkRequest(id: string, requestId: string, access: ReportAccess, signal: AbortSignal) {
   return request<NetworkDetail>(`/reports/${encodeURIComponent(id)}/network/${encodeURIComponent(requestId)}`, { ...access, signal });
+}
+
+export function updateVisibility(token: string, id: string, visibility: Visibility) {
+  return request<Pick<ReportSummary, "id" | "visibility">>(`/reports/${encodeURIComponent(id)}`, {
+    method: "PATCH", token, body: { visibility },
+  });
 }

@@ -6,7 +6,7 @@ export class ApiError extends Error {
 }
 
 type Options = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   token?: string;
   shareToken?: string;
   signal?: AbortSignal;
