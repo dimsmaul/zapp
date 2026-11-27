@@ -204,7 +204,7 @@ export function SharePage() {
           {token ? (
             <>
               <Button asChild variant="outline" size="icon" aria-label="Home"><Link to="/"><Home /></Link></Button>
-              <Button asChild variant="ghost"><Link to="/"><LayoutGrid />All reports</Link></Button>
+              <Button asChild variant="ghost"><Link to="/"><LayoutGrid />All Zapp</Link></Button>
             </>
           ) : <span className="text-sm font-medium text-muted-foreground">Zapp report</span>}
         </div>

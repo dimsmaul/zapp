@@ -3,8 +3,10 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "@/app/router";
+import { applyTheme } from "@/lib/theme";
 import "./index.css";
 
+applyTheme();
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root");
 const queryClient = new QueryClient();
