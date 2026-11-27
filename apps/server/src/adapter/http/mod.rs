@@ -15,7 +15,7 @@ pub(crate) use error::ApiError;
 
 use crate::{
     adapter::{mongo, s3::Storage},
-    feature::{auth, capture, debugger, reports, workspaces},
+    feature::{auth, capture, debugger, mcp, reports, workspaces},
 };
 
 #[derive(Clone)]
@@ -43,6 +43,7 @@ pub fn router_with_storage(db: Database, storage: Option<Storage>) -> Router {
         .route("/healthz", get(|| async { "OK" }))
         .route("/readyz", get(ready))
         .merge(capture::router())
+        .merge(mcp::router())
         .merge(
             auth::router()
                 .merge(workspaces::router())
