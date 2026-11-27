@@ -12,7 +12,9 @@ export type ReportSummary = {
   createdAt: string;
 };
 
-export type PlaybackReport = Pick<ReportSummary, "id" | "title" | "description" | "attachmentType" | "debuggerStatus"> & {
+export type PlaybackReport = Pick<ReportSummary, "id" | "title" | "description" | "attachmentType" | "debuggerStatus" | "createdAt"> & {
+  /** Reporter email; only sent to signed-in workspace members. */
+  reporter: string | null;
   attachmentUrl: string;
   captureContentType: string;
 };

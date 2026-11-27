@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, CircleAlert, Maximize, Minimize, Pause, Play, RotateCw, Volume2, VolumeX } from "lucide-react";
+import { FastForward, Maximize, Minimize, Pause, Play, Rewind, RotateCw, Volume2, VolumeX } from "lucide-react";
 import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,10 @@ export function seekVideo(video: HTMLVideoElement | null, seconds: number) {
   video.currentTime = Math.min(end, Math.max(0, seconds));
 }
 
-type Marker = { id: string; offsetMs: number; label: string };
+const pill = "flex items-center gap-0.5 rounded-full bg-black/55 p-1 text-white shadow-lg backdrop-blur-md";
+const pillButton = "rounded-full text-white hover:bg-white/20 hover:text-white";
+
+type Marker = { id: string; offsetMs: number; label: string; text: string };
 
 type PlayerProps = {
   video: RefObject<HTMLVideoElement | null>;
@@ -40,6 +43,15 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const limit = duration || Math.max(seekableEnd, durationHint);
+  const [idle, setIdle] = useState(true);
+  const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // YouTube-style: controls show on pointer move and hide after 2.5s while playing.
+  function wake() {
+    setIdle(false);
+    clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setIdle(true), 2500);
+  }
+  useEffect(() => () => clearTimeout(idleTimer.current), []);
   useEffect(() => {
     const update = () => setExpanded(document.fullscreenElement === frame.current);
     document.addEventListener("fullscreenchange", update);
@@ -108,19 +120,21 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
   return (
     <div
       ref={frame}
-      className="min-w-0 overflow-hidden rounded-xl border bg-background focus-visible:ring-2 focus-visible:ring-ring fullscreen:flex fullscreen:flex-col"
+      className="relative isolate grid aspect-video min-h-52 min-w-0 overflow-hidden bg-neutral-950 focus-visible:ring-2 focus-visible:ring-ring fullscreen:h-full fullscreen:w-full"
       role="group"
       aria-label="Recording player"
       tabIndex={0}
       onKeyDown={keyboard}
+      onPointerMove={wake}
+      onPointerLeave={() => setIdle(true)}
     >
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-neutral-950">
+      <div className="absolute inset-0 grid place-items-center">
         <video
           ref={video}
           src={src}
           preload="metadata"
           playsInline
-          className="aspect-video max-h-[70svh] w-full object-contain"
+          className="h-full w-full object-contain"
           onClick={() => void togglePlayback()}
           onLoadedMetadata={({ currentTarget }) => {
             currentTarget.playbackRate = Number(speed);
@@ -144,7 +158,14 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
           onError={() => { setFailed(true); setPlaying(false); }}
         />
       </div>
-      <div className="grid gap-3 bg-background p-3">
+      {!playing && !failed && (
+        <div className="dark pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="pointer-events-auto">
+            <Button size="icon-lg" aria-label="Play video" onClick={() => void togglePlayback()}><Play /></Button>
+          </div>
+        </div>
+      )}
+      <div className={`dark absolute inset-x-0 bottom-0 grid gap-2 bg-linear-to-t from-black/80 via-black/40 to-transparent px-3 pb-3 pt-10 text-foreground transition-opacity sm:px-4${playing && idle && !failed ? " pointer-events-none opacity-0 focus-within:pointer-events-auto focus-within:opacity-100" : ""}`}>
         {failed && (
           <Alert variant="destructive">
             <AlertDescription>
@@ -158,41 +179,48 @@ export function ReportPlayer({ video, src, durationHint, markers, onReload }: Pl
             <div className="relative mx-2 mb-1 h-6" aria-label="Network error markers">
               {markers.filter(({ offsetMs }) => offsetMs / 1000 <= limit).map((marker) => (
                 <div key={marker.id} className="absolute top-0 -translate-x-1/2" style={{ left: `${marker.offsetMs / (limit * 10)}%` }}>
-                  <Button variant="destructive" size="icon-xs" aria-label={`${marker.label} at ${clock(marker.offsetMs / 1000)}`} title={marker.label} onClick={() => seek(marker.offsetMs / 1000)}>
-                    <CircleAlert />
-                  </Button>
+                  <button type="button" className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow ring-2 ring-black/40 hover:bg-red-400 focus-visible:outline-2 focus-visible:outline-white" aria-label={`${marker.label} at ${clock(marker.offsetMs / 1000)}`} title={marker.label} onClick={() => seek(marker.offsetMs / 1000)}>
+                    {marker.text}
+                  </button>
                 </div>
               ))}
             </div>
           )}
-          <Slider value={[Math.min(current, limit)]} min={0} max={Math.max(0.1, limit)} step={0.1} aria-label="Playback position" disabled={!limit} onValueChange={([value]) => seek(value)} />
+          <Slider
+            className="**:data-[slot=slider-range]:bg-[#7ed957] **:data-[slot=slider-thumb]:border-2 **:data-[slot=slider-thumb]:border-[#7ed957] **:data-[slot=slider-track]:bg-white/35"
+            value={[Math.min(current, limit)]} min={0} max={Math.max(0.1, limit)} step={0.1} aria-label="Playback position" disabled={!limit} onValueChange={([value]) => seek(value)}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1">
-            <Button variant="outline" size="icon-sm" aria-label="Back 5 seconds" title="Back 5 seconds" onClick={() => skip(-5)}><ArrowLeft /></Button>
-            <Button size="icon-sm" aria-label={playing ? "Pause recording" : "Play recording"} onClick={() => void togglePlayback()}>{playing ? <Pause /> : <Play />}</Button>
-            <Button variant="outline" size="icon-sm" aria-label="Forward 5 seconds" title="Forward 5 seconds" onClick={() => skip(5)}><ArrowRight /></Button>
-            <span className="mx-2 whitespace-nowrap font-mono text-xs tabular-nums">{clock(current)} / {duration ? clock(duration) : "—"}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon-sm" aria-label={muted || !volume ? "Unmute" : "Mute"} onClick={toggleMute}>{muted || !volume ? <VolumeX /> : <Volume2 />}</Button>
-            <div className="w-14">
-              <Slider value={[muted ? 0 : volume]} min={0} max={1} step={0.05} aria-label="Volume" onValueChange={([value]) => {
-                if (!video.current) return;
-                video.current.muted = false;
-                video.current.volume = value;
-              }} />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={pill}>
+              <Button className={pillButton} variant="ghost" size="icon-sm" aria-label={playing ? "Pause recording" : "Play recording"} onClick={() => void togglePlayback()}>{playing ? <Pause className="fill-current" /> : <Play className="fill-current" />}</Button>
+              <Button className={pillButton} variant="ghost" size="icon-sm" aria-label="Back 5 seconds" title="Back 5 seconds" onClick={() => skip(-5)}><Rewind className="fill-current" /></Button>
+              <Button className={pillButton} variant="ghost" size="icon-sm" aria-label="Forward 5 seconds" title="Forward 5 seconds" onClick={() => skip(5)}><FastForward className="fill-current" /></Button>
+              <div className="group/volume flex items-center">
+              <Button className={pillButton} variant="ghost" size="icon-sm" aria-label={muted || !volume ? "Unmute" : "Mute"} onClick={toggleMute}>{muted || !volume ? <VolumeX /> : <Volume2 />}</Button>
+              <div className="w-0 overflow-hidden px-0 transition-all group-focus-within/volume:mr-2 group-focus-within/volume:w-14 group-hover/volume:mr-2 group-hover/volume:w-14">
+                <Slider className="**:data-[slot=slider-range]:bg-white **:data-[slot=slider-track]:bg-white/35" value={[muted ? 0 : volume]} min={0} max={1} step={0.05} aria-label="Volume" onValueChange={([value]) => {
+                  if (!video.current) return;
+                  video.current.muted = false;
+                  video.current.volume = value;
+                }} />
+              </div>
+              </div>
             </div>
+            <span className={`${pill} h-9 px-3 whitespace-nowrap text-sm font-medium tabular-nums`}>{clock(current)} / {duration ? clock(duration) : "—"}</span>
+          </div>
+          <div className={pill}>
             <Select value={speed} onValueChange={(value) => {
               setSpeed(value);
               if (video.current) video.current.playbackRate = Number(value);
             }}>
-              <SelectTrigger size="sm" aria-label="Playback speed"><SelectValue /></SelectTrigger>
+              <SelectTrigger size="sm" className="h-7 border-0 bg-transparent text-white shadow-none hover:bg-white/20 dark:bg-transparent" aria-label="Playback speed"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {["0.5", "0.75", "1", "1.25", "1.5", "2"].map((rate) => <SelectItem key={rate} value={rate}>{rate}×</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon-sm" aria-label={expanded ? "Exit fullscreen" : "Fullscreen"} onClick={() => void fullscreen()}>
+            <Button className={pillButton} variant="ghost" size="icon-sm" aria-label={expanded ? "Exit fullscreen" : "Fullscreen"} onClick={() => void fullscreen()}>
               {expanded ? <Minimize /> : <Maximize />}
             </Button>
           </div>

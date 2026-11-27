@@ -1,12 +1,10 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, getRouteApi, useLocation } from "@tanstack/react-router";
-import { ArrowLeft, AudioLines, Check, CircleAlert, Code2, Link2, List, Search } from "lucide-react";
+import { ArrowLeft, Check, Home, LayoutGrid, Link2, Search } from "lucide-react";
 import { useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -41,6 +39,68 @@ function isNetworkError(event: TimelineEvent) {
   return event.category === "network" && (event.data?.failed === true || (typeof status === "number" && status >= 400));
 }
 
+const relativeUnits: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["year", 31_536_000], ["month", 2_592_000], ["day", 86_400], ["hour", 3600], ["minute", 60],
+];
+
+function timeAgo(value: string) {
+  const seconds = (new Date(value).getTime() - Date.now()) / 1000;
+  const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  for (const [unit, size] of relativeUnits) {
+    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
+  }
+  return "just now";
+}
+
+const typeChips = [
+  { key: "all", label: "All" },
+  { key: "xhr", label: "Fetch/XHR" },
+  { key: "ws", label: "WS" },
+  { key: "js", label: "JS" },
+  { key: "css", label: "CSS" },
+  { key: "media", label: "Media" },
+  { key: "font", label: "Font" },
+  { key: "doc", label: "Doc" },
+  { key: "other", label: "Other" },
+] as const;
+type TypeKey = (typeof typeChips)[number]["key"];
+
+// Maps the DevTools resource type captured by the extension to a filter chip.
+function resourceGroup(event: TimelineEvent): Exclude<TypeKey, "all"> {
+  const type = String(event.data?.resourceType ?? "").toLowerCase();
+  if (type === "xhr" || type === "fetch") return "xhr";
+  if (type === "websocket" || event.data?.transport === "websocket") return "ws";
+  if (type === "script") return "js";
+  if (type === "stylesheet") return "css";
+  if (type === "image" || type === "media") return "media";
+  if (type === "font") return "font";
+  if (type === "document") return "doc";
+  return "other";
+}
+
+function requestParts(event: TimelineEvent) {
+  const data = event.data;
+  const raw = typeof data?.url === "string" ? data.url : "";
+  let path = raw || event.kind;
+  let host = "—";
+  try {
+    const url = new URL(raw);
+    path = `${url.pathname}${url.search}`;
+    host = url.host;
+  } catch {
+    // keep the raw value when the captured URL is relative or missing
+  }
+  const status = data?.status ?? data?.statusCode;
+  return {
+    method: typeof data?.method === "string" ? data.method.toUpperCase() : "—",
+    status: typeof status === "number" ? String(status) : "—",
+    path,
+    host,
+    type: typeof data?.resourceType === "string" ? data.resourceType.toLowerCase() : "—",
+    time: typeof data?.durationMs === "number" ? `${Math.round(data.durationMs)} ms` : "—",
+  };
+}
+
 export function SharePage() {
   const { id } = route.useParams();
   const hash = useLocation({ select: (location) => location.hash });
@@ -57,6 +117,7 @@ export function SharePage() {
   const [mediaError, setMediaError] = useState(false);
   const [filter, setFilter] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<TypeKey>("all");
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
 
   const report = useQuery({
@@ -91,12 +152,19 @@ export function SharePage() {
   const rows = allEvents.filter((event) => {
     if (view === "console" && event.category !== "console") return false;
     if (view === "network" && errorsOnly && !isNetworkError(event)) return false;
+    if (view === "network" && typeFilter !== "all" && resourceGroup(event) !== typeFilter) return false;
     return !term || `${event.kind} ${describe(event)}`.toLowerCase().includes(term);
   });
   const markers = allEvents.filter(isNetworkError).slice(0, 16).map((event) => {
     const status = event.data?.status ?? event.data?.statusCode;
-    return { id: event.id, offsetMs: event.offsetMs, label: typeof status === "number" ? `HTTP ${status}` : "Request failed" };
+    return {
+      id: event.id,
+      offsetMs: event.offsetMs,
+      text: typeof status === "number" ? String(status) : "ERR",
+      label: typeof status === "number" ? `HTTP ${status}` : "Request failed",
+    };
   });
+  const inspecting = view === "network" && Boolean(requestId);
   const debuggerStatus = events.data?.pages[0]?.debuggerStatus ?? report.data?.debuggerStatus;
   const unavailable = report.error instanceof ApiError && report.error.status === 404;
 
@@ -117,7 +185,7 @@ export function SharePage() {
     );
   }
 
-  const { title, description, attachmentType, attachmentUrl } = report.data;
+  const { title, description, attachmentType, attachmentUrl, createdAt, reporter } = report.data;
 
   async function copyLink() {
     try {
@@ -129,33 +197,31 @@ export function SharePage() {
   }
 
   return (
-    <main className="mx-auto grid max-w-[1600px] gap-5 p-4 sm:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-        <div className="flex items-center gap-3">
-          {token && <Button asChild variant="outline" size="icon" aria-label="Back to workspace"><Link to="/"><ArrowLeft /></Link></Button>}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Zapp report</p>
-            <h1 className="text-xl font-semibold">{title || "Untitled report"}</h1>
-          </div>
+    <main className="grid min-h-svh bg-background lg:h-svh lg:grid-cols-[minmax(0,3fr)_minmax(23rem,2fr)]">
+      <section className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] lg:min-h-0" aria-label="Report recording">
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-2">
+          {token ? (
+            <>
+              <Button asChild variant="outline" size="icon" aria-label="Home"><Link to="/"><Home /></Link></Button>
+              <Button asChild variant="ghost"><Link to="/"><LayoutGrid />All reports</Link></Button>
+            </>
+          ) : <span className="text-sm font-medium text-muted-foreground">Zapp report</span>}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
+          <Button className="bg-[#7ed957] font-semibold text-black hover:bg-[#6fc94a]" onClick={() => void copyLink()}>{copyState === "copied" ? <Check /> : <Link2 />}{copyState === "copied" ? "Copied" : "Copy link"}</Button>
           {copyState === "failed" && <span role="status" className="text-sm">Copy the URL from the address bar.</span>}
         </div>
       </header>
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section className="grid min-w-0 gap-4" aria-label="Recorded capture">
+      <div className="min-w-0 lg:overflow-y-auto">
             {attachmentType === "screenshot" ? (
-              <Card>
-                <CardHeader><CardTitle>Screenshot</CardTitle></CardHeader>
-                <CardContent>
+              <div className="grid place-items-center bg-neutral-950">
                   {mediaError && <Alert variant="destructive"><AlertDescription>
                     The screenshot could not be loaded.
                     <Button variant="outline" size="sm" disabled={report.isFetching} onClick={() => void report.refetch()}>Reload</Button>
                   </AlertDescription></Alert>}
-                  <img src={attachmentUrl} alt={title ? `Screenshot for ${title}` : "Captured screenshot"} onLoad={() => setMediaError(false)} onError={() => setMediaError(true)} />
-                </CardContent>
-              </Card>
+                  <img className="max-h-[72svh] w-full object-contain" src={attachmentUrl} alt={title ? `Screenshot for ${title}` : "Captured screenshot"} onLoad={() => setMediaError(false)} onError={() => setMediaError(true)} />
+              </div>
             ) : (
               <ReportPlayer
                 video={video} src={attachmentUrl} markers={markers}
@@ -166,40 +232,115 @@ export function SharePage() {
                 }}
               />
             )}
-            {description && <Card><CardHeader><CardTitle>Report notes</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap">{description}</p></CardContent></Card>}
+            <article className="grid gap-3 border-t px-4 py-5 sm:px-6">
+              <h1 className="break-words text-2xl font-semibold">{title || "Untitled report"}</h1>
+              {description && <p className="whitespace-pre-wrap break-words text-muted-foreground">{description}</p>}
+              <p className="border-t pt-3 text-xs text-muted-foreground">
+                {reporter && <span className="font-medium text-foreground">{reporter} </span>}
+                created this report · <time dateTime={createdAt} title={new Date(createdAt).toLocaleString()}>{timeAgo(createdAt)}</time>
+              </p>
+            </article>
+        </div>
         </section>
-        <Card>
-          <CardHeader>
-            <CardTitle>Debugger</CardTitle>
-            {debuggerStatus && <CardDescription>{debuggerMessage[debuggerStatus]}</CardDescription>}
-          </CardHeader>
-          <CardContent>
+        <aside className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] border-t lg:min-h-0 lg:border-l lg:border-t-0" aria-label="Report diagnostics">
+          <header className="flex min-h-16 flex-wrap items-center gap-x-3 border-b px-4 py-3">
+            <h2 className="font-semibold">DevTools</h2>
+            {debuggerStatus && <p className="text-xs text-muted-foreground">{debuggerMessage[debuggerStatus]}</p>}
+          </header>
+          <div className="min-w-0 lg:overflow-auto">
             <Tabs value={view} onValueChange={(value) => {
               if (value === "timeline" || value === "console" || value === "network") setView(value);
             }}>
-              <TabsList aria-label="Debugger views">
-                <TabsTrigger value="timeline"><List />Timeline</TabsTrigger>
-                <TabsTrigger value="console"><Code2 />Console</TabsTrigger>
-                <TabsTrigger value="network"><AudioLines />Network</TabsTrigger>
+              <div className="sticky top-0 z-10 border-b bg-background px-4 pt-3 pb-2">
+              <TabsList variant="line" aria-label="Debugger views" className="h-auto">
+                {(["console", "network", "timeline"] as const).map((tab) => (
+                  <TabsTrigger key={tab} value={tab} className="flex-none rounded-md border-transparent px-3 py-1.5 capitalize data-active:border-[#7ed957]">{tab}</TabsTrigger>
+                ))}
               </TabsList>
+              </div>
               <TabsContent value={view}>
-                <div className="flex flex-wrap items-center gap-2 py-3">
-                  <Search size={16} aria-hidden="true" />
-                  <div className="min-w-32 flex-1">
-                    <Input aria-label="Filter loaded events" placeholder="Filter events" value={filter} onChange={(event) => setFilter(event.target.value)} />
+                {inspecting && (
+                  <div className="grid gap-3 p-4">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setSelection(undefined)}><ArrowLeft />Back</Button>
+                      {networkDetail && <span className="truncate font-mono text-xs" title={requestParts(networkDetail.event).path}>{requestParts(networkDetail.event).method} {requestParts(networkDetail.event).path}</span>}
+                    </div>
+                    {detail.isPending && <Spinner aria-label="Loading the request" />}
+                    {detail.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(detail.error)}</AlertDescription></Alert>}
+                    {networkDetail && (
+                      <Tabs key={requestId} defaultValue={networkDetail.details?.request != null ? "request" : "all"}>
+                        <TabsList variant="line" aria-label="Request detail views" className="h-auto">
+                          {([["request", "Request"], ["response", "Response"], ["timing", "Timing"], ["all", "All data"]] as const).filter(([part]) => part === "all" || networkDetail.details?.[part] != null).map(([part, label]) => (
+                            <TabsTrigger key={part} value={part} className="flex-none rounded-md border-transparent px-3 py-1.5 data-active:border-[#7ed957]">{label}</TabsTrigger>
+                          ))}
+                        </TabsList>
+                        {(["request", "response", "timing", "all"] as const).map((part) => {
+                          const data = part === "all" ? (networkDetail.details ?? networkDetail.event.data) : networkDetail.details?.[part];
+                          if (data == null && part !== "all") return null;
+                          return <TabsContent key={part} value={part}><pre className="max-h-[60svh] overflow-auto break-all whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-xs">{JSON.stringify(data, null, 2)}</pre></TabsContent>;
+                        })}
+                      </Tabs>
+                    )}
                   </div>
-                  {view === "network" && <Button variant={errorsOnly ? "secondary" : "outline"} aria-pressed={errorsOnly} onClick={() => setErrorsOnly((value) => !value)}><CircleAlert />Errors only</Button>}
+                )}
+                {!inspecting && <>
+                <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2">
+                  <div className="relative min-w-32 flex-1">
+                    <Search size={16} aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input className="border-0 bg-muted/50 pl-8" aria-label="Filter loaded events" placeholder="Filter" value={filter} onChange={(event) => setFilter(event.target.value)} />
+                  </div>
+                  {view === "network" && (
+                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                      <input type="checkbox" checked={errorsOnly} onChange={(event) => setErrorsOnly(event.target.checked)} />
+                      Errors only
+                    </label>
+                  )}
                 </div>
-                {events.isPending && <Spinner aria-label="Loading diagnostic events" />}
-                {events.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(events.error)}</AlertDescription></Alert>}
+                {view === "network" && (
+                  <div className="flex flex-wrap gap-1.5 border-b px-4 py-2" role="group" aria-label="Resource type">
+                    {typeChips.map(({ key, label }) => (
+                      <Button key={key} size="xs" variant={typeFilter === key ? "default" : "outline"} aria-pressed={typeFilter === key} onClick={() => setTypeFilter(key)}>{label}</Button>
+                    ))}
+                  </div>
+                )}
+                {events.isPending &&<div className="p-4"><Spinner aria-label="Loading diagnostic events" /></div>}
+                {events.isError && <div className="p-4"><Alert variant="destructive"><AlertDescription>{errorMessage(events.error)}</AlertDescription></Alert></div>}
                 {events.isSuccess && rows.length === 0 && (
                   <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view === "console" && events.hasNextPage ? "Load more timeline entries to find console messages." : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
                 )}
-                {rows.length > 0 && (
-                  <div className="max-h-[60svh] overflow-auto">
+                {rows.length > 0 && view === "network" && (
                   <Table>
                     <TableHeader><TableRow>
-                      <TableHead>Time</TableHead><TableHead>{view === "network" ? "Request" : "Event"}</TableHead>{view === "network" && <><TableHead>Status</TableHead><TableHead>Detail</TableHead></>}
+                      <TableHead>Name</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Domain</TableHead><TableHead>Type</TableHead><TableHead>Time</TableHead><TableHead className="text-right">At</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {rows.map((event) => {
+                        const { method, status, path, host, type, time } = requestParts(event);
+                        return (
+                          <TableRow key={event.id} className={`cursor-pointer font-mono text-xs ${isNetworkError(event) ? "bg-destructive/10" : ""}`} onClick={() => setSelection({ reportId: id, requestId: event.id })}>
+                            <TableCell className="max-w-40 truncate" title={path}>
+                              <button type="button" className="max-w-full truncate text-left focus-visible:underline focus-visible:outline-none" aria-label={`Inspect ${method} ${path}`}>{path}</button>
+                            </TableCell>
+                            <TableCell>{method}</TableCell>
+                            <TableCell>{status}</TableCell>
+                            <TableCell className="max-w-28 truncate text-muted-foreground" title={host}>{host}</TableCell>
+                            <TableCell className="text-muted-foreground">{type}</TableCell>
+                            <TableCell className="whitespace-nowrap text-muted-foreground">{time}</TableCell>
+                            <TableCell className="text-right">
+                              {attachmentType === "video" ? (
+                                <Button variant="link" size="sm" onClick={(click) => { click.stopPropagation(); seekVideo(video.current, event.offsetMs / 1000); }}>{clock(event.offsetMs / 1000)}</Button>
+                              ) : <span className="text-muted-foreground">{clock(event.offsetMs / 1000)}</span>}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+                {rows.length > 0 && view !== "network" && (
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead>Time</TableHead><TableHead>Event</TableHead>
                     </TableRow></TableHeader>
                     <TableBody>
                       {rows.map((event) => (
@@ -215,51 +356,19 @@ export function SharePage() {
                               <span className="break-all">{describe(event)}</span>
                             </div>
                           </TableCell>
-                          {view === "network" && <>
-                            <TableCell><Badge variant={isNetworkError(event) ? "destructive" : "secondary"}>{String(event.data?.status ?? event.data?.statusCode ?? "—")}</Badge></TableCell>
-                            <TableCell>
-                              <Button size="sm" variant="outline" aria-pressed={requestId === event.id} onClick={() => setSelection({ reportId: id, requestId: event.id })}>Inspect</Button>
-                            </TableCell>
-                          </>}
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                  </div>
                 )}
-                {events.hasNextPage && <div className="mt-3">
+                {events.hasNextPage && <div className="p-4">
                   <Button variant="outline" disabled={events.isFetchingNextPage} onClick={() => void events.fetchNextPage()}>Load more</Button>
                 </div>}
+                </>}
               </TabsContent>
             </Tabs>
-          </CardContent>
-        </Card>
-      </div>
-      <Dialog open={view === "network" && Boolean(requestId)} onOpenChange={(open) => { if (!open) setSelection(undefined); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Request details</DialogTitle>
-            <DialogDescription>Captured request, response, and timing data.</DialogDescription>
-          </DialogHeader>
-          {detail.isPending && <Spinner aria-label="Loading the request" />}
-          {detail.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(detail.error)}</AlertDescription></Alert>}
-          {networkDetail && (
-            <Tabs key={requestId} defaultValue={networkDetail.details?.request != null ? "request" : "all"}>
-              <TabsList aria-label="Request detail views">
-                {networkDetail.details?.request != null && <TabsTrigger value="request">Request</TabsTrigger>}
-                {networkDetail.details?.response != null && <TabsTrigger value="response">Response</TabsTrigger>}
-                {networkDetail.details?.timing != null && <TabsTrigger value="timing">Timing</TabsTrigger>}
-                <TabsTrigger value="all">All data</TabsTrigger>
-              </TabsList>
-              {(["request", "response", "timing", "all"] as const).map((part) => {
-                const data = part === "all" ? (networkDetail.details ?? networkDetail.event.data) : networkDetail.details?.[part];
-                if (data == null && part !== "all") return null;
-                return <TabsContent key={part} value={part}><pre className="max-h-72 overflow-auto break-all whitespace-pre-wrap text-sm">{JSON.stringify(data, null, 2)}</pre></TabsContent>;
-              })}
-            </Tabs>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        </aside>
     </main>
   );
 }
