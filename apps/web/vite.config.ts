@@ -9,9 +9,9 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
-    proxy: { "/api": "http://127.0.0.1:8080" },
+    proxy: { "/api": "http://127.0.0.1:8080", "/mcp": "http://127.0.0.1:8080" },
   },
   preview: {
-    proxy: { "/api": "http://127.0.0.1:8080" },
+    proxy: { "/api": "http://127.0.0.1:8080", "/mcp": "http://127.0.0.1:8080" },
   },
 });

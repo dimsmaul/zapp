@@ -11,6 +11,10 @@
       "destination": "https://api.zapp.dimsmaul.my.id/api/:path*"
     },
     {
+      "source": "/mcp",
+      "destination": "https://api.zapp.dimsmaul.my.id/mcp"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

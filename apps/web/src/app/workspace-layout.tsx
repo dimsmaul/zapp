@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDown, FolderPlus, Link2, LogOut, Moon, Plus, Settings, Video } from "lucide-react";
+import { ChevronsUpDown, FolderPlus, Link2, LogOut, Moon, Plus, Settings, SlidersHorizontal, Video } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,10 @@ import { useSession } from "@/features/auth/session";
 import { createWorkspace, listWorkspaces, selectWorkspace } from "@/features/workspaces/api";
 import { errorMessage } from "@/lib/api";
 import { type Theme, setTheme, useTheme } from "@/lib/theme";
+
+// Labels fade out while the sidebar narrows and are clipped by the button, instead of popping out of
+// the layout (display: none) or wrapping onto a second line mid-animation.
+const label = "whitespace-nowrap transition-opacity duration-200 group-data-[collapsible=icon]:opacity-0";
 
 export function WorkspaceLayout() {
   return (
@@ -109,8 +113,8 @@ function WorkspaceNavigation() {
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton size="lg" tooltip="Switch workspace" aria-label="Switch workspace">
                     <img src="/logo.svg" alt="" className="size-8 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{active?.name ?? "Select workspace"}</span>
-                    <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
+                    <span className={`${label} min-w-0 flex-1 truncate`}>{active?.name ?? "Select workspace"}</span>
+                    <ChevronsUpDown className={label} />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
@@ -125,7 +129,7 @@ function WorkspaceNavigation() {
                   <DropdownMenuSeparator />
                   {session?.workspaceId && (
                     <DropdownMenuItem asChild>
-                      <Link to="/workspace/settings" onClick={() => setOpenMobile(false)}><Settings />Workspace settings</Link>
+                      <Link to="/workspace/settings" onClick={() => setOpenMobile(false)}><SlidersHorizontal />Workspace settings</Link>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem onSelect={() => setCreating(true)}><Plus />Create new workspace</DropdownMenuItem>
@@ -139,17 +143,17 @@ function WorkspaceNavigation() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === "/reports"} tooltip="All Zapp">
-                  <Link to="/reports" onClick={() => setOpenMobile(false)}><Video /><span>All Zapp</span></Link>
+                  <Link to="/reports" onClick={() => setOpenMobile(false)}><Video /><span className={label}>All Zapp</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton disabled tooltip="Recording links (coming soon)">
-                  <Link2 /><span className="flex-1">Recording links</span><span className="text-xs text-muted-foreground">Soon</span>
+                  <Link2 /><span className={`${label} flex-1`}>Recording links</span><span className={`${label} text-xs text-muted-foreground`}>Soon</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton disabled tooltip="Create folder (coming soon)">
-                  <FolderPlus /><span className="flex-1">Create folder</span><span className="text-xs text-muted-foreground">Soon</span>
+                  <FolderPlus /><span className={`${label} flex-1`}>Create folder</span><span className={`${label} text-xs text-muted-foreground`}>Soon</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -162,8 +166,8 @@ function WorkspaceNavigation() {
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton size="lg" tooltip={email} aria-label="Account menu">
                     <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold uppercase text-primary-foreground">{email.charAt(0) || "?"}</span>
-                    <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{email}</span>
-                    <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
+                    <span className={`${label} min-w-0 flex-1 truncate`}>{email}</span>
+                    <ChevronsUpDown className={label} />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
@@ -179,7 +183,9 @@ function WorkspaceNavigation() {
                       </DropdownMenuRadioGroup>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
-                  <DropdownMenuItem disabled><Settings />Settings<span className="ml-auto text-xs text-muted-foreground">Soon</span></DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings" onClick={() => setOpenMobile(false)}><Settings />Settings</Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem disabled={signOut.isPending} onSelect={() => signOut.mutate()}><LogOut />Sign out</DropdownMenuItem>
                 </DropdownMenuContent>
