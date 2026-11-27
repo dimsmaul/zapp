@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, getRouteApi, useLocation } from "@tanstack/react-router";
-import { ArrowLeft, Check, Home, LayoutGrid, Link2, Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { Check, Home, LayoutGrid, Link2, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isActive, useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
 import { type DebuggerStatus, type TimelineEvent, getNetworkRequest, getReport, listEvents } from "./api";
+import { NetworkInspector } from "./network-inspector";
+import { type NetworkRow, NetworkTable } from "./network-table";
 import { clock, ReportPlayer, seekVideo } from "./player";
 
 const route = getRouteApi("/s/$id");
@@ -76,6 +78,19 @@ function resourceGroup(event: TimelineEvent): Exclude<TypeKey, "all"> {
   if (type === "font") return "font";
   if (type === "document") return "doc";
   return "other";
+}
+
+function networkRow(event: TimelineEvent): NetworkRow {
+  const { method, status, path, host, type } = requestParts(event);
+  const duration = event.data?.durationMs;
+  return {
+    id: event.id,
+    name: path.split("/").filter(Boolean).at(-1) ?? host,
+    path, host, method, status, type,
+    durationMs: typeof duration === "number" ? Math.round(duration) : null,
+    offsetMs: event.offsetMs,
+    error: isNetworkError(event),
+  };
 }
 
 function requestParts(event: TimelineEvent) {
@@ -165,6 +180,19 @@ export function SharePage() {
     };
   });
   const inspecting = view === "network" && Boolean(requestId);
+
+  // Infinite scroll: load the next page whenever the sentinel below the list scrolls into view.
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = events;
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) void fetchNextPage();
+    }, { rootMargin: "200px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, allEvents.length, view]);
   const debuggerStatus = events.data?.pages[0]?.debuggerStatus ?? report.data?.debuggerStatus;
   const unavailable = report.error instanceof ApiError && report.error.status === 404;
 
@@ -242,7 +270,7 @@ export function SharePage() {
             </article>
         </div>
         </section>
-        <aside className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] border-t lg:min-h-0 lg:border-l lg:border-t-0" aria-label="Report diagnostics">
+        <aside className="relative grid min-w-0 grid-rows-[auto_minmax(0,1fr)] border-t lg:min-h-0 lg:border-l lg:border-t-0" aria-label="Report diagnostics">
           <header className="flex min-h-16 flex-wrap items-center gap-x-3 border-b px-4 py-3">
             <h2 className="font-semibold">DevTools</h2>
             {debuggerStatus && <p className="text-xs text-muted-foreground">{debuggerMessage[debuggerStatus]}</p>}
@@ -259,31 +287,6 @@ export function SharePage() {
               </TabsList>
               </div>
               <TabsContent value={view}>
-                {inspecting && (
-                  <div className="grid gap-3 p-4">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setSelection(undefined)}><ArrowLeft />Back</Button>
-                      {networkDetail && <span className="truncate font-mono text-xs" title={requestParts(networkDetail.event).path}>{requestParts(networkDetail.event).method} {requestParts(networkDetail.event).path}</span>}
-                    </div>
-                    {detail.isPending && <Spinner aria-label="Loading the request" />}
-                    {detail.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(detail.error)}</AlertDescription></Alert>}
-                    {networkDetail && (
-                      <Tabs key={requestId} defaultValue={networkDetail.details?.request != null ? "request" : "all"}>
-                        <TabsList variant="line" aria-label="Request detail views" className="h-auto">
-                          {([["request", "Request"], ["response", "Response"], ["timing", "Timing"], ["all", "All data"]] as const).filter(([part]) => part === "all" || networkDetail.details?.[part] != null).map(([part, label]) => (
-                            <TabsTrigger key={part} value={part} className="flex-none rounded-md border-transparent px-3 py-1.5 data-active:border-[#7ed957]">{label}</TabsTrigger>
-                          ))}
-                        </TabsList>
-                        {(["request", "response", "timing", "all"] as const).map((part) => {
-                          const data = part === "all" ? (networkDetail.details ?? networkDetail.event.data) : networkDetail.details?.[part];
-                          if (data == null && part !== "all") return null;
-                          return <TabsContent key={part} value={part}><pre className="max-h-[60svh] overflow-auto break-all whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-xs">{JSON.stringify(data, null, 2)}</pre></TabsContent>;
-                        })}
-                      </Tabs>
-                    )}
-                  </div>
-                )}
-                {!inspecting && <>
                 <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2">
                   <div className="relative min-w-32 flex-1">
                     <Search size={16} aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
@@ -306,36 +309,16 @@ export function SharePage() {
                 {events.isPending &&<div className="p-4"><Spinner aria-label="Loading diagnostic events" /></div>}
                 {events.isError && <div className="p-4"><Alert variant="destructive"><AlertDescription>{errorMessage(events.error)}</AlertDescription></Alert></div>}
                 {events.isSuccess && rows.length === 0 && (
-                  <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view === "console" && events.hasNextPage ? "Load more timeline entries to find console messages." : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
+                  <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view === "console" && events.hasNextPage ? "Loading more timeline entries to find console messages…" : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
                 )}
                 {rows.length > 0 && view === "network" && (
-                  <Table>
-                    <TableHeader><TableRow>
-                      <TableHead>Name</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Domain</TableHead><TableHead>Type</TableHead><TableHead>Time</TableHead><TableHead className="text-right">At</TableHead>
-                    </TableRow></TableHeader>
-                    <TableBody>
-                      {rows.map((event) => {
-                        const { method, status, path, host, type, time } = requestParts(event);
-                        return (
-                          <TableRow key={event.id} className={`cursor-pointer font-mono text-xs ${isNetworkError(event) ? "bg-destructive/10" : ""}`} onClick={() => setSelection({ reportId: id, requestId: event.id })}>
-                            <TableCell className="max-w-40 truncate" title={path}>
-                              <button type="button" className="max-w-full truncate text-left focus-visible:underline focus-visible:outline-none" aria-label={`Inspect ${method} ${path}`}>{path}</button>
-                            </TableCell>
-                            <TableCell>{method}</TableCell>
-                            <TableCell>{status}</TableCell>
-                            <TableCell className="max-w-28 truncate text-muted-foreground" title={host}>{host}</TableCell>
-                            <TableCell className="text-muted-foreground">{type}</TableCell>
-                            <TableCell className="whitespace-nowrap text-muted-foreground">{time}</TableCell>
-                            <TableCell className="text-right">
-                              {attachmentType === "video" ? (
-                                <Button variant="link" size="sm" onClick={(click) => { click.stopPropagation(); seekVideo(video.current, event.offsetMs / 1000); }}>{clock(event.offsetMs / 1000)}</Button>
-                              ) : <span className="text-muted-foreground">{clock(event.offsetMs / 1000)}</span>}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                  <div className="overflow-x-auto">
+                    <NetworkTable
+                      rows={rows.map(networkRow)}
+                      selectedId={requestId}
+                      onSelect={(rowId) => setSelection({ reportId: id, requestId: rowId })}
+                    />
+                  </div>
                 )}
                 {rows.length > 0 && view !== "network" && (
                   <Table>
@@ -361,13 +344,24 @@ export function SharePage() {
                     </TableBody>
                   </Table>
                 )}
-                {events.hasNextPage && <div className="p-4">
-                  <Button variant="outline" disabled={events.isFetchingNextPage} onClick={() => void events.fetchNextPage()}>Load more</Button>
+                {events.hasNextPage && <div ref={sentinel} className="p-4" aria-live="polite">
+                  {events.isFetchingNextPage && <Spinner aria-label="Loading more events" />}
                 </div>}
-                </>}
               </TabsContent>
             </Tabs>
           </div>
+          {inspecting && (
+            <div className="absolute inset-y-0 right-0 z-20 w-4/5 border-l bg-background shadow-2xl max-sm:w-full">
+              <NetworkInspector
+                key={requestId}
+                detail={networkDetail}
+                loading={detail.isPending}
+                error={detail.error}
+                onClose={() => setSelection(undefined)}
+                onSeek={attachmentType === "video" ? (seconds) => seekVideo(video.current, seconds) : undefined}
+              />
+            </div>
+          )}
         </aside>
     </main>
   );
