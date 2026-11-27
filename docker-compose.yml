@@ -65,7 +65,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: zapp/apps/web/Dockerfile
+      dockerfile: apps/web/Dockerfile
     ports:
       - "127.0.0.1:${ZAPP_WEB_PORT:-5173}:80"
 
