@@ -311,7 +311,7 @@ export function SharePage() {
               <Button asChild variant="outline" size="icon" aria-label="Home"><Link to="/"><Home /></Link></Button>
               <Button asChild variant="ghost"><Link to="/"><LayoutGrid />All Zapp</Link></Button>
             </>
-          ) : <span className="text-sm font-medium text-muted-foreground">Zapp report</span>}
+          ) : <span className="flex items-center gap-2 text-sm font-medium"><img src="/logo.svg" alt="" className="size-7" />Zapp</span>}
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex">

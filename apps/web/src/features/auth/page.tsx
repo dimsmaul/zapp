@@ -33,7 +33,7 @@ export function AuthPage() {
 
   return (
     <main className="mx-auto grid min-h-svh max-w-sm content-center gap-4 p-6">
-      <h1 className="text-xl font-semibold">Zapp</h1>
+      <h1 className="flex items-center gap-2 text-xl font-semibold"><img src="/logo.svg" alt="" className="size-8" />Zapp</h1>
       <Card>
         <CardHeader>
           <CardTitle>{registering ? "Create an account" : "Sign in"}</CardTitle>

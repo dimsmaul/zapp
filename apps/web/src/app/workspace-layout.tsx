@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDown, FolderPlus, Layers3, Link2, LogOut, Moon, Plus, Settings, Video } from "lucide-react";
+import { ChevronsUpDown, FolderPlus, Link2, LogOut, Moon, Plus, Settings, Video } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -108,7 +108,7 @@ function WorkspaceNavigation() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton size="lg" tooltip="Switch workspace" aria-label="Switch workspace">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"><Layers3 /></span>
+                    <img src="/logo.svg" alt="" className="size-8 shrink-0" />
                     <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{active?.name ?? "Select workspace"}</span>
                     <ChevronsUpDown className="group-data-[collapsible=icon]:hidden" />
                   </SidebarMenuButton>
