@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Bot, KeyRound, Plus, Trash2, UserRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
+import { SettingsLayout, type SettingsSection } from "@/components/settings-layout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,14 @@ function CodeBlock({ text, label }: { text: string; label: string }) {
   );
 }
 
+type SectionId = "general" | "agents";
+const sections: SettingsSection<SectionId>[] = [
+  { id: "general", label: "General", Icon: UserRound },
+  { id: "agents", label: "Agents & MCP", Icon: Bot },
+];
+
 export function SettingsPage() {
+  const [section, setSection] = useState<SectionId>("general");
   const session = useSession((state) => state.session);
   const token = session?.token ?? "";
   const theme = useTheme();
@@ -72,6 +80,7 @@ export function SettingsPage() {
   const secret = created?.token ?? "YOUR_TOKEN";
   const snippets = {
     "claude-code": `claude mcp add --transport http zapp ${mcpUrl} \\\n  --header "Authorization: Bearer ${secret}"`,
+    codex: `# Add to ~/.codex/config.toml\n[mcp_servers.zapp]\nurl = "${mcpUrl}"\nbearer_token_env_var = "ZAPP_MCP_TOKEN"\n\n# Then keep the token in your environment, not in the file\nexport ZAPP_MCP_TOKEN="${secret}"`,
     cursor: JSON.stringify({ mcpServers: { zapp: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${secret}` } } } }, null, 2),
     curl: `curl -s ${mcpUrl} \\\n  -H "Authorization: Bearer ${secret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`,
   };
@@ -83,18 +92,10 @@ export function SettingsPage() {
   }
 
   return (
-    <section className="w-full">
-      <header className="flex min-h-16 items-center border-b pl-14 pr-4 sm:pl-16 sm:pr-6">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-      </header>
-      <div className="w-full max-w-3xl p-4 sm:p-6 lg:p-8">
-        <Tabs defaultValue="agents">
-          <TabsList variant="line" aria-label="Settings sections" className="h-auto">
-            <TabsTrigger value="general" className="flex-none px-3 py-1.5">General</TabsTrigger>
-            <TabsTrigger value="agents" className="flex-none px-3 py-1.5">Agents &amp; MCP</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="general" className="grid gap-6 pt-4">
+    <>
+      <SettingsLayout title="Settings" sections={sections} current={section} onSelect={setSection}>
+        {section === "general" && (
+          <div className="grid gap-6">
             <Card>
               <CardHeader><CardTitle>Account</CardTitle><CardDescription>The account you are signed in with.</CardDescription></CardHeader>
               <CardContent>
@@ -117,9 +118,11 @@ export function SettingsPage() {
                 </Select>
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="agents" className="grid gap-6 pt-4">
+        {section === "agents" && (
+          <div className="grid gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bot className="size-5" />Connect an agent</CardTitle>
@@ -148,6 +151,7 @@ export function SettingsPage() {
                 <Tabs defaultValue="claude-code">
                   <TabsList aria-label="Client setup">
                     <TabsTrigger value="claude-code">Claude Code</TabsTrigger>
+                    <TabsTrigger value="codex">Codex</TabsTrigger>
                     <TabsTrigger value="cursor">Cursor / JSON</TabsTrigger>
                     <TabsTrigger value="curl">cURL</TabsTrigger>
                   </TabsList>
@@ -202,9 +206,9 @@ export function SettingsPage() {
                 </ul>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+          </div>
+        )}
+      </SettingsLayout>
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent>
@@ -251,6 +255,6 @@ export function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </>
   );
 }
