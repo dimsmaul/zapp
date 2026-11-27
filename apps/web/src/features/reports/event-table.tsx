@@ -1,4 +1,4 @@
-import { CircleAlert, Info, MousePointerClick, Terminal, TriangleAlert } from "lucide-react";
+import { CircleAlert, Globe, Info, MousePointerClick, Terminal, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { HeaderRow, rowClass, tableText } from "./devtools-table";
 import { clock } from "./player";
@@ -18,6 +18,7 @@ const columns = "grid-cols-[3rem_minmax(0,1fr)]";
 
 function icon(row: EventRow) {
   if (row.category === "action") return <MousePointerClick />;
+  if (row.category === "network") return row.level === "error" ? <CircleAlert /> : <Globe />;
   const level = row.level?.toLowerCase();
   if (level === "error") return <CircleAlert />;
   if (level === "warn" || level === "warning") return <TriangleAlert />;

@@ -89,6 +89,16 @@ function eventRow(event: TimelineEvent): EventRow {
       text: typeof data?.targetLabel === "string" ? data.targetLabel : "",
     };
   }
+  if (event.category === "network") {
+    const { method, status, path, host } = requestParts(event);
+    const target = host === "—" ? path : `${host}${path}`;
+    return {
+      id: event.id, offsetMs: event.offsetMs, category: "network",
+      level: isNetworkError(event) ? "error" : undefined,
+      verb: method === "—" ? undefined : method,
+      text: status === "—" ? target : `${target}  ${status}`,
+    };
+  }
   return {
     id: event.id, offsetMs: event.offsetMs, category: event.category,
     level: typeof data?.level === "string" ? data.level : undefined,
@@ -192,7 +202,7 @@ export function SharePage() {
   const allEvents = events.data?.pages.flatMap((page) => page.items) ?? [];
   const term = filter.trim().toLowerCase();
   const rows = allEvents.filter((event) => {
-    if (view === "console" && event.category !== "console") return false;
+    // Console is the full timeline: user actions, console messages, and the app's API calls.
     if (view === "action" && event.category !== "action") return false;
     if (view === "network" && errorsOnly && !isNetworkError(event)) return false;
     if (view === "network" && typeFilter !== "all" && resourceGroup(event) !== typeFilter) return false;
@@ -406,7 +416,7 @@ export function SharePage() {
                 {events.isPending && <div className="p-4"><Spinner aria-label="Loading diagnostic events" /></div>}
                 {events.isError && <div className="p-4"><Alert variant="destructive"><AlertDescription>{errorMessage(events.error)}</AlertDescription></Alert></div>}
                 {events.isSuccess && rows.length === 0 && (
-                  <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view !== "network" && events.hasNextPage ? `Loading more entries to find ${view === "console" ? "console messages" : "user actions"}…` : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
+                  <Empty><EmptyHeader><EmptyTitle>No events in this view</EmptyTitle><EmptyDescription>{view === "action" && events.hasNextPage ? "Loading more entries to find user actions…" : "Captured events appear here when available."}</EmptyDescription></EmptyHeader></Empty>
                 )}
                 {rows.length > 0 && view === "network" && (
                   <NetworkTable
@@ -419,7 +429,7 @@ export function SharePage() {
                 {rows.length > 0 && view !== "network" && (
                   <EventTable
                     rows={rows.map(eventRow)}
-                    label={view === "console" ? "Console messages" : "User actions"}
+                    label={view === "console" ? "Console" : "User actions"}
                     activeId={activeId}
                     onSelect={attachmentType === "video" ? (row) => seekVideo(video.current, row.offsetMs / 1000) : undefined}
                   />
