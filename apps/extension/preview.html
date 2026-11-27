@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zapp capture preview</title>
+    <link rel="stylesheet" href="ui.css">
+    <link rel="stylesheet" href="preview.css">
+  </head>
+  <body>
+    <main class="preview">
+      <header class="brand"><span class="mark" aria-hidden="true">Z</span><h1>Capture preview</h1><a href="preview.html">All drafts</a></header>
+      <p id="status" role="status" aria-live="polite" hidden></p>
+      <section id="draft-list" class="stack" hidden><h2>Local drafts</h2><div id="draft-items" class="stack"></div></section>
+      <section id="review" class="review" hidden>
+        <div class="media">
+          <video id="video" preload="metadata" playsinline hidden></video>
+          <img id="image" alt="Screenshot of the captured tab" hidden>
+          <div id="player" class="player" hidden>
+            <button id="play" type="button" aria-label="Play preview">Play</button>
+            <input id="seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Playback position">
+            <span id="clock">0:00 / 0:00</span>
+            <button id="fullscreen" type="button">Fullscreen</button>
+          </div>
+        </div>
+        <form id="save-form" class="stack details">
+          <div><h2>Report details</h2><p class="muted" id="diagnostics"></p></div>
+          <label>Title<input id="title" name="title" maxlength="180" required></label>
+          <div id="warnings" class="muted" hidden></div>
+          <button id="save" class="primary" type="submit">Save &amp; get link</button>
+          <button id="grant" type="button" hidden>Allow upload to storage</button>
+          <button id="discard" class="quiet" type="button">Discard draft</button>
+          <div id="share" class="stack" hidden>
+            <label>Share link<input id="link" type="url" readonly></label>
+            <div class="row"><button id="copy" type="button">Copy link</button><a id="open-report" target="_blank" rel="noopener noreferrer">Open report</a></div>
+          </div>
+        </form>
+      </section>
+    </main>
+    <script type="module" src="preview.js"></script>
+  </body>
+</html>

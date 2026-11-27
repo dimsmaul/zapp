@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zapp</title>
+    <link rel="stylesheet" href="ui.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="brand"><span class="mark" aria-hidden="true">Z</span><h1>Zapp</h1><button id="change-server" type="button" class="quiet" hidden>Change server</button></header>
+      <p id="status" role="status" aria-live="polite" hidden></p>
+
+      <form id="connect" class="stack" hidden>
+        <div><h2>Connect to Zapp</h2><p class="muted">Enter the URL of your Zapp server.</p></div>
+        <label>Server URL<input name="origin" type="url" placeholder="https://zapp.example.com" required></label>
+        <button type="submit" class="primary">Continue</button>
+      </form>
+
+      <form id="login" class="stack" hidden>
+        <div><h2>Sign in</h2><p id="server" class="muted ellipsis"></p></div>
+        <label>Email<input name="email" type="email" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit" class="primary">Sign in</button>
+      </form>
+
+      <form id="workspace" class="stack" hidden>
+        <div><h2>Choose a workspace</h2><p id="workspace-hint" class="muted">Captures will be saved here.</p></div>
+        <label>Workspace<select name="id" required></select></label>
+        <button type="submit" class="primary">Continue</button>
+      </form>
+
+      <section id="capture" class="stack" hidden>
+        <p id="selection" class="muted ellipsis"></p>
+        <button id="screenshot" class="action" type="button"><span class="action-icon" aria-hidden="true">▣</span> Screenshot</button>
+        <div class="action-group">
+          <button id="record" class="action" type="button"><span class="action-icon" aria-hidden="true">◉</span> Record tab</button>
+          <button id="show-tabs" class="quiet" type="button" aria-controls="tab-picker" aria-expanded="false">Choose tab</button>
+        </div>
+        <form id="tab-picker" class="stack inset" hidden>
+          <label>Tab to record<select name="tab" required></select></label>
+          <button type="submit">Open selected tab</button>
+        </form>
+        <div class="row footer">
+          <button id="switch-workspace" type="button" class="quiet">Workspace</button>
+          <button id="logout" type="button" class="quiet">Sign out</button>
+        </div>
+      </section>
+
+      <section id="recording" class="stack" hidden>
+        <h2>Recording tab</h2>
+        <output id="elapsed">0:00</output>
+        <div class="row"><button id="pause" type="button">Pause</button><button id="stop" class="danger" type="button">Stop recording</button></div>
+      </section>
+      <button id="drafts" type="button" class="quiet drafts" hidden>Open drafts</button>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
