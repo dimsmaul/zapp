@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type FormEvent, useState } from "react";
+import { ImagePlus } from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSession } from "@/features/auth/session";
 import { visibilityOption, visibilityOptions } from "@/features/reports/visibility";
 import { errorMessage } from "@/lib/api";
-import { type Workspace, deleteWorkspace, leaveWorkspace, updateWorkspace } from "../api";
+import { iconDataUrl } from "@/lib/icon";
+import { type Workspace, deleteWorkspace, leaveWorkspace, removeWorkspaceIcon, setWorkspaceIcon, updateWorkspace } from "../api";
 
 type Props = { token: string; workspace: Workspace };
 
@@ -48,8 +50,45 @@ export function GeneralSection({ token, workspace }: Props) {
     if (name && name !== workspace.name) save.mutate({ name });
   }
 
+  // The picture is converted to WebP in the browser before it is sent, so the server only stores a small image.
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadIcon = useMutation({
+    mutationFn: async (file: File) => setWorkspaceIcon(token, workspace.id, await iconDataUrl(file)),
+    onSuccess: refresh,
+  });
+  const removeIcon = useMutation({ mutationFn: () => removeWorkspaceIcon(token, workspace.id), onSuccess: refresh });
+  const iconError = uploadIcon.error ?? removeIcon.error;
+
   return (
     <div className="grid gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Workspace icon</CardTitle>
+          <CardDescription>Shown in the workspace switcher instead of the Zapp logo while this workspace is active. It is cropped to a square and converted to WebP.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {iconError && <Alert variant="destructive"><AlertDescription>{errorMessage(iconError)}</AlertDescription></Alert>}
+          <div className="flex flex-wrap items-center gap-4">
+            <img src={workspace.icon ?? "/logo.svg"} alt="" className="size-16 rounded-xl object-cover ring-1 ring-foreground/10" />
+            {isAdmin ? (
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Choose a workspace icon"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) uploadIcon.mutate(file);
+                  }}
+                />
+                <Button variant="outline" disabled={uploadIcon.isPending} onClick={() => fileInput.current?.click()}>
+                  <ImagePlus />{workspace.icon ? "Change icon" : "Upload icon"}
+                </Button>
+                {workspace.icon && <Button variant="ghost" disabled={removeIcon.isPending} onClick={() => removeIcon.mutate()}>Remove</Button>}
+              </div>
+            ) : <p className="text-sm text-muted-foreground">Only owners and admins can change the icon.</p>}
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader><CardTitle>Workspace name</CardTitle><CardDescription>Shown in the workspace switcher and in invitations.</CardDescription></CardHeader>
         <CardContent>

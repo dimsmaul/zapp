@@ -148,7 +148,7 @@ export function SharePage() {
   const shareToken = new URLSearchParams(hash.replace(/^#/, "")).get("share") || undefined;
   const access = { token, shareToken };
   const accessKey = ["report", id, token, shareToken] as const;
-  const [view, setView] = useState<"console" | "network" | "action" | "info">("console");
+  const [view, setView] = useState<"console" | "network" | "action" | "info">("info");
   const eventView = view === "network" ? "network" : "events";
   const [selection, setSelection] = useState<{ reportId: string; requestId: string }>();
   const requestId = selection?.reportId === id ? selection.requestId : undefined;

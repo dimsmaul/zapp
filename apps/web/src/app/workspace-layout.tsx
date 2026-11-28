@@ -113,7 +113,8 @@ function WorkspaceNavigation() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton size="lg" tooltip="Switch workspace" aria-label="Switch workspace">
-                    <img src="/logo.svg" alt="" className="size-8 shrink-0" />
+                    {/* The active workspace's icon, or the Zapp logo when it has none. It follows the workspace you switch to. */}
+                    <img src={active?.icon ?? "/logo.svg"} alt="" className="size-8 shrink-0 rounded-lg object-cover" />
                     <span className={`${label} min-w-0 flex-1 truncate`}>{active?.name ?? "Select workspace"}</span>
                     {IS_BETA ? <span className={`${label} rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase`} title={VERSION}>Beta</span> : null}
                     <ChevronsUpDown className={label} />
@@ -124,6 +125,7 @@ function WorkspaceNavigation() {
                   <DropdownMenuRadioGroup value={session?.workspaceId ?? ""} onValueChange={(id) => select.mutate(id)}>
                     {workspaces.data?.items.map((workspace) => (
                       <DropdownMenuRadioItem key={workspace.id} value={workspace.id}>
+                        <img src={workspace.icon ?? "/logo.svg"} alt="" className="size-5 shrink-0 rounded object-cover" />
                         <span className="truncate">{workspace.name}</span>
                       </DropdownMenuRadioItem>
                     ))}

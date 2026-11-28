@@ -34,6 +34,12 @@ export type Environment = {
   windowHeight?: number;
   timezone?: string;
   language?: string;
+  /** Estimated by the extension from the device's time zone (no IP lookup). */
+  country?: string;
+  countryCode?: string;
+  /** When the capture started in UTC (ISO 8601), and the device's offset from UTC in minutes. */
+  capturedAt?: string;
+  utcOffsetMinutes?: number;
 };
 
 export type PlaybackReport = Pick<ReportSummary, "id" | "title" | "description" | "attachmentType" | "debuggerStatus" | "createdAt" | "visibility" | "canManage"> & {

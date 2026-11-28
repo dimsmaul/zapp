@@ -6,6 +6,8 @@ export type Workspace = {
   role: "owner" | "admin" | "member";
   /** Visibility for new reports when the capture does not ask for one. */
   defaultVisibility?: "restricted" | "private" | "public" | null;
+  /** A small WebP (or PNG) data URL shown instead of the Zapp logo while this workspace is active. */
+  icon?: string | null;
 };
 
 export function listWorkspaces(token: string, signal: AbortSignal) {
@@ -54,6 +56,14 @@ export function changeRole(token: string, workspaceId: string, userId: string, r
 
 export function updateWorkspace(token: string, workspaceId: string, changes: { name?: string; defaultVisibility?: "restricted" | "private" | "public" }) {
   return request<{ id: string }>(`/workspaces/${encodeURIComponent(workspaceId)}`, { method: "PATCH", token, body: changes });
+}
+
+export function setWorkspaceIcon(token: string, workspaceId: string, icon: string) {
+  return request<void>(`/workspaces/${encodeURIComponent(workspaceId)}/icon`, { method: "PUT", token, body: { icon } });
+}
+
+export function removeWorkspaceIcon(token: string, workspaceId: string) {
+  return request<void>(`/workspaces/${encodeURIComponent(workspaceId)}/icon`, { method: "DELETE", token });
 }
 
 export function leaveWorkspace(token: string, workspaceId: string) {
