@@ -1,4 +1,5 @@
 mod controller;
+mod icon;
 mod repository;
 
 use axum::{Router, routing::{delete, get, patch, post, put}};
@@ -10,6 +11,7 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/workspaces", get(controller::list).post(controller::create))
         .route("/api/v1/workspaces/{id}", patch(controller::update).delete(controller::delete_workspace))
+        .route("/api/v1/workspaces/{id}/icon", put(controller::set_icon).delete(controller::delete_icon))
         .route("/api/v1/workspaces/{id}/leave", post(controller::leave))
         .route("/api/v1/session/workspace", put(controller::select))
         .route("/api/v1/workspaces/{id}/members", get(controller::members))

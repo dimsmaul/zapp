@@ -114,6 +114,25 @@ pub(super) async fn update(State(state): State<AppState>, session: Session, Path
     Ok(Json(json!({ "id": id, "name": fields.get_str("name").ok(), "defaultVisibility": fields.get_str("defaultVisibility").ok() })))
 }
 
+#[derive(Deserialize)]
+pub(super) struct IconInput { icon: String }
+
+/// Owners and admins set the workspace icon: a small WebP (or PNG) data URL the browser made from the upload.
+pub(super) async fn set_icon(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<IconInput>) -> Result<StatusCode, ApiError> {
+    repository::require_admin(&state.db, &session.user_id, &id).await?;
+    if !super::icon::is_valid(&input.icon) {
+        return Err(ApiError::invalid("The icon must be a WebP or PNG image of at most 64 KB."));
+    }
+    state.db.collection::<Document>("workspaces").update_one(doc! { "_id": &id }, doc! { "$set": { "icon": &input.icon } }).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(super) async fn delete_icon(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    repository::require_admin(&state.db, &session.user_id, &id).await?;
+    state.db.collection::<Document>("workspaces").update_one(doc! { "_id": &id }, doc! { "$unset": { "icon": "" } }).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Admins and members can leave. Owners delete the workspace instead, so it is never left without one.
 pub(super) async fn leave(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     let role = repository::membership(&state.db, &session.user_id, &id).await?.ok_or(ApiError::NOT_FOUND)?;

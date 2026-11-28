@@ -17,6 +17,12 @@ pub(super) struct Environment {
     pub window_height: Option<u32>,
     pub timezone: Option<String>,
     pub language: Option<String>,
+    /// Estimated by the extension from the device's time zone. The server never looks at the client's IP address.
+    pub country: Option<String>,
+    pub country_code: Option<String>,
+    /// When the capture started, in UTC (ISO 8601), and the device's offset from UTC in minutes.
+    pub captured_at: Option<String>,
+    pub utc_offset_minutes: Option<i32>,
 }
 
 impl Environment {
@@ -26,7 +32,8 @@ impl Environment {
         let texts = [
             ("url", &self.url, 2048), ("title", &self.title, 300), ("os", &self.os, 80), ("osVersion", &self.os_version, 80),
             ("architecture", &self.architecture, 40), ("browser", &self.browser, 80), ("browserVersion", &self.browser_version, 80),
-            ("timezone", &self.timezone, 80), ("language", &self.language, 40),
+            ("timezone", &self.timezone, 80), ("language", &self.language, 40), ("country", &self.country, 80),
+            ("countryCode", &self.country_code, 2), ("capturedAt", &self.captured_at, 40),
         ];
         for (key, value, max) in texts {
             let Some(value) = value else { continue };
@@ -34,6 +41,13 @@ impl Environment {
                 return None;
             }
             document.insert(key, value.as_str());
+        }
+        // No real time zone is further than UTC-12 or UTC+14.
+        if let Some(offset) = self.utc_offset_minutes {
+            if !(-12 * 60..=14 * 60).contains(&offset) {
+                return None;
+            }
+            document.insert("utcOffsetMinutes", i64::from(offset));
         }
         for (key, value) in [("windowWidth", self.window_width), ("windowHeight", self.window_height)] {
             if let Some(value) = value {

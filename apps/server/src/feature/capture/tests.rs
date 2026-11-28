@@ -72,3 +72,20 @@ fn validate_media_checks_size_and_content_type() {
         Err(MediaValidation::ContentType)
     );
 }
+
+fn environment(json: &str) -> Option<mongodb::bson::Document> {
+    serde_json::from_str::<super::dto::Environment>(json).unwrap().to_document()
+}
+
+#[test]
+fn environment_keeps_the_time_zone_country_and_utc_offset() {
+    let stored = environment(r#"{"country":"Indonesia","countryCode":"ID","timezone":"Asia/Jakarta","utcOffsetMinutes":420,"capturedAt":"2026-11-23T04:30:00.000Z"}"#).unwrap();
+    assert_eq!(stored.get_str("countryCode"), Ok("ID"));
+    assert_eq!(stored.get_i64("utcOffsetMinutes"), Ok(420));
+}
+
+#[test]
+fn environment_rejects_values_that_cannot_be_real() {
+    assert!(environment(r#"{"utcOffsetMinutes":5000}"#).is_none());
+    assert!(environment(r#"{"countryCode":"IDN"}"#).is_none());
+}

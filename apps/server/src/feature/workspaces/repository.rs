@@ -60,7 +60,7 @@ pub(super) async fn list(db: &Database, user: &str) -> Result<Vec<Document>, Api
         doc! { "$lookup": { "from": "workspaces", "localField": "workspaceId", "foreignField": "_id", "as": "workspace" } },
         doc! { "$unwind": "$workspace" },
         doc! { "$sort": { "workspace.name": 1, "workspaceId": 1 } },
-        doc! { "$project": { "_id": 0, "id": "$workspaceId", "name": "$workspace.name", "role": 1, "defaultVisibility": "$workspace.defaultVisibility" } },
+        doc! { "$project": { "_id": 0, "id": "$workspaceId", "name": "$workspace.name", "role": 1, "defaultVisibility": "$workspace.defaultVisibility", "icon": "$workspace.icon" } },
     ]).await?.try_collect().await?;
     Ok(workspaces)
 }
