@@ -71,3 +71,26 @@ jobs:
             fi
           done
           npx --yes chrome-webstore-upload-cli@4.0.2 --source "zapp-extension-${{ steps.v.outputs.version }}.zip"
+
+      # The CLI only says "does not meet the requirements". Ask the API why, so the log names the missing piece
+      # (a permission justification, privacy fields, a version still in review) without opening the dashboard.
+      - name: Why the store refused it
+        if: failure() && steps.v.outputs.beta == 'false'
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          token=$(curl -sS https://oauth2.googleapis.com/token -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" \
+            -d refresh_token="$REFRESH_TOKEN" -d grant_type=refresh_token | jq -r .access_token)
+          if [ -z "$token" ] || [ "$token" = null ]; then
+            echo "::warning::Could not get a Web Store token to read the status."
+            exit 0
+          fi
+          item="https://chromewebstore.googleapis.com/v2/publishers/$PUBLISHER_ID/items/$EXTENSION_ID"
+          echo "--- Item status"
+          curl -sS -H "Authorization: Bearer $token" "$item:fetchStatus" | jq . || true
+          echo "--- Publish response (the reason Google gives)"
+          curl -sS -X POST -H "Authorization: Bearer $token" -H "Content-Length: 0" "$item:publish" | jq . || true
