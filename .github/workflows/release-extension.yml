@@ -37,12 +37,18 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "beta=$beta" >> "$GITHUB_OUTPUT"
 
+      # Safe to re-run: if a failed store step is retried with "Re-run jobs", the release already exists.
       - name: GitHub release
         run: |
-          flags=()
-          [[ "${{ steps.v.outputs.beta }}" == true ]] && flags+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" "zapp-extension-${{ steps.v.outputs.version }}.zip" \
-            --title "Extension ${{ steps.v.outputs.version }}" --generate-notes "${flags[@]}"
+          zip="zapp-extension-${{ steps.v.outputs.version }}.zip"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$zip" --clobber
+          else
+            flags=()
+            [[ "${{ steps.v.outputs.beta }}" == true ]] && flags+=(--prerelease)
+            gh release create "$GITHUB_REF_NAME" "$zip" \
+              --title "Extension ${{ steps.v.outputs.version }}" --generate-notes "${flags[@]}"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
