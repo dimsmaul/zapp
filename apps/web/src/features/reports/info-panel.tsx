@@ -2,7 +2,9 @@ import { Info } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import type { Environment } from "./api";
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short", timeZoneName: "short" });
+// timeStyle "long" already ends with the zone name. dateStyle/timeStyle must not be mixed with other options such as
+// timeZoneName: that throws a TypeError when this module loads, which takes the whole report page down.
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "long" });
 
 function join(...parts: (string | number | undefined)[]) {
   return parts.filter((part) => part !== undefined && part !== "").join(" ");

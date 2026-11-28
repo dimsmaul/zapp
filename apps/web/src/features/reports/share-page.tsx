@@ -414,7 +414,7 @@ export function SharePage() {
             }}>
               <div className="shrink-0 border-b px-4 pt-3 pb-2">
               <TabsList variant="line" aria-label="Debugger views" className="h-auto">
-                {(["console", "network", "action", "info"] as const).map((tab) => (
+                {(["info", "console", "network", "action"] as const).map((tab) => (
                   <TabsTrigger key={tab} value={tab} className="flex-none rounded-md border-transparent px-3 py-1.5 capitalize">{tab}</TabsTrigger>
                 ))}
               </TabsList>
