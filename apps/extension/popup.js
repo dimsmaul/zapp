@@ -96,7 +96,7 @@ async function openLogin() {
   const state = crypto.randomUUID()
   const expiresAt = Date.now() + 10 * 60_000
   await chrome.storage.session.set({ login: { state, origin: account.origin, expiresAt } })
-  const query = new URLSearchParams({ ref: 'extension', ext: chrome.runtime.id, state })
+  const query = new URLSearchParams({ ref: 'extension', state })
   const tab = await chrome.tabs.create({ url: `${web}/login?${query}` })
   await chrome.storage.session.set({ login: { state, origin: account.origin, expiresAt, tabId: tab.id } })
 }

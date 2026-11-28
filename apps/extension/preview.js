@@ -262,6 +262,7 @@ async function publish() {
       body: {
         attachmentType: draft.type, captureContentType: draft.blob.type, hasDebuggerPayload: Boolean(draft.events.length), title,
         ...(draft.folderId ? { folderId: draft.folderId } : {}),
+        ...(draft.environment ? { environment: draft.environment } : {}),
         ...(description ? { description } : {}),
       },
     })

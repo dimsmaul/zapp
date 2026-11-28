@@ -1,4 +1,4 @@
-import { currentAccount, hostPattern } from './api.js'
+import { api, currentAccount, hostPattern } from './api.js'
 import { attach, debuggerEvent, detach, fallback, flushRequests, pageEvent } from './diagnostics.js'
 import { saveDraft } from './store.js'
 
@@ -99,6 +99,38 @@ async function activeTab() {
   return tab
 }
 
+// Brands in the order we would rather name the browser: Chromium browsers also list "Chromium" and "Google Chrome".
+const BROWSERS = ['Brave', 'Microsoft Edge', 'Opera', 'Vivaldi', 'Arc', 'Google Chrome', 'Chromium']
+
+// Where and on what this capture is made, for the report's Info tab. The page URL drops its query and fragment,
+// which can carry tokens.
+async function environmentOf(tab) {
+  const data = navigator.userAgentData
+  let high = {}
+  try {
+    high = await data?.getHighEntropyValues(['platformVersion', 'architecture', 'fullVersionList']) ?? {}
+  } catch {
+    // Not offered here: leave the details out rather than guess.
+  }
+  const brands = high.fullVersionList ?? data?.brands ?? []
+  const brand = BROWSERS.map((name) => brands.find((entry) => entry.brand === name)).find(Boolean)
+  let url
+  try {
+    const page = new URL(tab.url)
+    url = `${page.origin}${page.pathname}`
+  } catch {
+    url = undefined
+  }
+  const text = (value, max) => (typeof value === 'string' && value ? value.slice(0, max) : undefined)
+  const environment = {
+    url, title: text(tab.title, 300), os: text(data?.platform, 80), osVersion: text(high.platformVersion, 80),
+    architecture: text(high.architecture, 40), browser: brand?.brand, browserVersion: text(brand?.version, 80),
+    windowWidth: tab.width > 0 ? Math.round(tab.width) : undefined, windowHeight: tab.height > 0 ? Math.round(tab.height) : undefined,
+    timezone: text(Intl.DateTimeFormat().resolvedOptions().timeZone, 80), language: text(navigator.language, 40),
+  }
+  return Object.fromEntries(Object.entries(environment).filter(([, value]) => value !== undefined))
+}
+
 async function makeDraft(type, tab) {
   const account = await currentAccount()
   if (!account?.token || !account?.workspaceId || Date.parse(account.expiresAt) <= Date.now()) {
@@ -109,7 +141,7 @@ async function makeDraft(type, tab) {
   await chrome.storage.session.remove('recordTarget')
   const folderId = recordTarget?.expiresAt > Date.now() && recordTarget.workspaceId === account.workspaceId ? recordTarget.folderId : null
   return {
-    id: crypto.randomUUID(), type, createdAt: Date.now(), ...(folderId ? { folderId } : {}),
+    id: crypto.randomUUID(), type, createdAt: Date.now(), environment: await environmentOf(tab), ...(folderId ? { folderId } : {}),
     origin: account.origin, workspaceId: account.workspaceId, userId: account.userId,
     title: tab.title?.slice(0, 180) || (type === 'video' ? 'Tab recording' : 'Screenshot'),
   }
@@ -303,6 +335,29 @@ async function handle(message, sender) {
       await chrome.storage.session.set({ recordTarget: { ...target, expiresAt: Date.now() + 30 * 60_000 } })
     }
     await openPanel(sender.tab)
+    return true
+  }
+  if (message.type === 'auth-session') {
+    // Sent by web-bridge.js after you sign in on the Zapp website. Accepted only for the sign-in this extension
+    // started (the one-off `state`), and only after the server confirms the session.
+    if (!sender.tab || sender.frameId !== 0 || !sender.url) throw new Error('Unrecognized connection.')
+    const { webOrigin } = await chrome.storage.local.get('webOrigin')
+    if (!webOrigin || new URL(sender.url).origin !== webOrigin) throw new Error('This site is not connected to Zapp.')
+    const { login } = await chrome.storage.session.get('login')
+    if (!login || login.expiresAt < Date.now() || !message.state || message.state !== login.state) {
+      throw new Error('This sign-in is not valid or has expired. Open Zapp in the extension and try again.')
+    }
+    const account = { origin: login.origin, token: message.token, expiresAt: message.expiresAt, userId: message.userId, workspaceId: null }
+    if (!account.token || !account.userId || !Number.isFinite(Date.parse(account.expiresAt))) {
+      throw new Error('The sign-in response was incomplete. Try again.')
+    }
+    const session = await api(account, '/api/v1/session')
+    if (session.user?.id !== account.userId) throw new Error('The sign-in response did not match your account.')
+    account.workspaceId = session.workspaceId ?? null // the server starts the session in the default workspace
+    await chrome.storage.local.set({ account })
+    await chrome.storage.session.remove('login')
+    const tabId = sender.tab.id
+    setTimeout(() => void chrome.tabs.remove(tabId).catch(() => {}), 800)
     return true
   }
   if (sender.tab && sender.frameId === 0 && !sender.url?.startsWith(extensionOrigin)) {
