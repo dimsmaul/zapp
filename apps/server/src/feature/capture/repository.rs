@@ -117,7 +117,8 @@ impl CaptureRepository<'_> {
         let details = doc! {
             "attachmentType": &draft.details.attachment_type, "visibility": &draft.details.visibility,
             "title": draft.details.title.as_deref(), "description": draft.details.description.as_deref(),
-            "folderId": draft.details.folder_id.as_deref()
+            "folderId": draft.details.folder_id.as_deref(),
+            "environment": draft.details.environment.clone()
         };
         let stored = self
             .0
@@ -197,6 +198,7 @@ impl CaptureRepository<'_> {
                 title: details.get_str("title").ok().map(str::to_owned),
                 description: details.get_str("description").ok().map(str::to_owned),
                 folder_id: details.get_str("folderId").ok().map(str::to_owned),
+                environment: details.get_document("environment").ok().cloned(),
             },
         })
     }
@@ -219,6 +221,7 @@ impl CaptureRepository<'_> {
             "visibility": &draft.details.visibility, "attachmentType": &draft.details.attachment_type,
             "title": draft.details.title.as_deref(), "description": draft.details.description.as_deref(),
             "folderId": draft.details.folder_id.as_deref(),
+            "environment": draft.details.environment.clone(),
             "media": { "objectKey": media.key, "contentType": &draft.artifacts.content_type, "sizeBytes": media.size as i64 },
             "debuggerStatus": if debugger.is_some() { "pending" } else { "not_uploaded" },
             "debugger": debugger,

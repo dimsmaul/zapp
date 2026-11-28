@@ -97,9 +97,21 @@ pub(crate) async fn read_report(
             "debuggerStatus": report.get_str("debuggerStatus").ok(),
             "createdAt": report.get_datetime("createdAt").ok().and_then(|date| date.try_to_rfc3339_string().ok()),
             "reporter": member.reporter, "visibility": report.get_str("visibility").ok(),
-            "canManage": member.can_manage, "workspaceId": member.workspace_id,
+            "canManage": member.can_manage, "environment": environment_view(&report, member.workspace_id.is_some()),
+            "workspaceId": member.workspace_id,
         })),
     ))
+}
+
+/// The device, browser and page a report was recorded on. The page's URL and title are only for workspace
+/// members, because they can reveal what is behind a login. Public and share-link viewers get the rest.
+fn environment_view(report: &Document, member: bool) -> Option<Value> {
+    let mut environment = report.get_document("environment").ok()?.clone();
+    if !member {
+        environment.remove("url");
+        environment.remove("title");
+    }
+    Some(mongodb::bson::Bson::Document(environment).into_relaxed_extjson())
 }
 
 /// What a signed-in workspace member may see beyond the public report.

@@ -45,6 +45,7 @@ pub(super) struct DraftDetails {
     pub title: Option<String>,
     pub description: Option<String>,
     pub folder_id: Option<String>,
+    pub environment: Option<mongodb::bson::Document>,
 }
 
 pub(super) struct Draft {

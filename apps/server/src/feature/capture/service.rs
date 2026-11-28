@@ -102,6 +102,10 @@ impl CaptureService<'_> {
                 title: input.title,
                 description: input.description,
                 folder_id: input.folder_id,
+                environment: match input.environment {
+                    Some(environment) => Some(environment.to_document().ok_or(CaptureError::InvalidUpload)?),
+                    None => None,
+                },
             },
         };
         if let Some(folder) = draft.details.folder_id.as_deref() {
