@@ -5,9 +5,15 @@
   globalThis.zappBridge = true
   window.addEventListener('message', async (event) => {
     if (event.source !== window || event.origin !== location.origin || event.data?.zapp !== 'open') return
+    // A recording link says where the recording should go. Anything that is not a short string is dropped.
+    const short = (value) => (typeof value === 'string' && value.length <= 80 ? value : null)
+    const raw = event.data.target
+    const target = raw && short(raw.workspaceId)
+      ? { workspaceId: short(raw.workspaceId), folderId: short(raw.folderId), folderName: short(raw.folderName) }
+      : null
     let opened = false
     try {
-      const result = await chrome.runtime.sendMessage({ to: 'background', type: 'open-panel' })
+      const result = await chrome.runtime.sendMessage({ to: 'background', type: 'open-panel', target })
       opened = Boolean(result?.ok)
     } catch {
       // The extension was reloaded or removed while this page stayed open.

@@ -261,6 +261,7 @@ async function publish() {
       method: 'POST', idempotencyKey: draft.uploadKey,
       body: {
         attachmentType: draft.type, captureContentType: draft.blob.type, hasDebuggerPayload: Boolean(draft.events.length), title,
+        ...(draft.folderId ? { folderId: draft.folderId } : {}),
         ...(description ? { description } : {}),
       },
     })

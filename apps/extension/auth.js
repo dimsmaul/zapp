@@ -25,6 +25,8 @@ try {
   // Make sure the server really issued this session before we keep it.
   const session = await api(account, '/api/v1/session')
   if (session.user?.id !== account.userId) throw new Error('The sign-in response did not match your account.')
+  // The server starts the session in the user's default workspace, so there is nothing to pick.
+  account.workspaceId = session.workspaceId ?? null
   await chrome.storage.local.set({ account })
   await chrome.storage.session.remove('login')
   say('Connected. You can close this tab.')

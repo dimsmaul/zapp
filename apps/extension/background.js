@@ -1,4 +1,4 @@
-import { currentAccount } from './api.js'
+import { currentAccount, hostPattern } from './api.js'
 import { attach, debuggerEvent, detach, fallback, flushRequests, pageEvent } from './diagnostics.js'
 import { saveDraft } from './store.js'
 
@@ -8,9 +8,34 @@ let recording
 let starting = false
 let offscreen
 
+// Registers the script that lets the website's "New Zapp" button open this extension. The popup does it when
+// you connect a server; this covers extensions that were connected before, or updated since. It only runs
+// when Chrome already granted access to the website, because a permission prompt needs a click.
+async function ensureBridge() {
+  const account = await currentAccount()
+  if (!account?.origin) return
+  try {
+    const response = await fetch(new URL('/api/v1/config', account.origin), { credentials: 'omit' })
+    const web = new URL((await response.json()).webOrigin).origin
+    if (!await chrome.permissions.contains({ origins: [hostPattern(web)] })) return
+    const { webOrigin } = await chrome.storage.local.get('webOrigin')
+    const registered = await chrome.scripting.getRegisteredContentScripts({ ids: ['zapp-web'] })
+    if (webOrigin === web && registered.length) return
+    await chrome.scripting.unregisterContentScripts({ ids: ['zapp-web'] }).catch(() => {})
+    await chrome.scripting.registerContentScripts([{
+      id: 'zapp-web', matches: [hostPattern(web)], js: ['web-bridge.js'], runAt: 'document_start', persistAcrossSessions: true,
+    }])
+    await chrome.storage.local.set({ webOrigin: web })
+  } catch {
+    // The server was unreachable. Try again the next time the browser or the extension starts.
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => {})
+  void ensureBridge()
 })
+chrome.runtime.onStartup.addListener(() => void ensureBridge())
 
 const popupUrl = chrome.runtime.getURL('popup.html')
 const PANEL_TTL_MS = 6 * 60 * 60 * 1000
@@ -79,8 +104,12 @@ async function makeDraft(type, tab) {
   if (!account?.token || !account?.workspaceId || Date.parse(account.expiresAt) <= Date.now()) {
     throw new Error('Sign in and select a workspace before capturing.')
   }
+  // A recording link picked a folder for this capture. It applies once, and only in its own workspace.
+  const { recordTarget } = await chrome.storage.session.get('recordTarget')
+  await chrome.storage.session.remove('recordTarget')
+  const folderId = recordTarget?.expiresAt > Date.now() && recordTarget.workspaceId === account.workspaceId ? recordTarget.folderId : null
   return {
-    id: crypto.randomUUID(), type, createdAt: Date.now(),
+    id: crypto.randomUUID(), type, createdAt: Date.now(), ...(folderId ? { folderId } : {}),
     origin: account.origin, workspaceId: account.workspaceId, userId: account.userId,
     title: tab.title?.slice(0, 180) || (type === 'video' ? 'Tab recording' : 'Screenshot'),
   }
@@ -268,6 +297,11 @@ async function handle(message, sender) {
     if (!sender.tab || sender.frameId !== 0 || !sender.url) throw new Error('Unrecognized connection.')
     const { webOrigin } = await chrome.storage.local.get('webOrigin')
     if (!webOrigin || new URL(sender.url).origin !== webOrigin) throw new Error('This site is not connected to Zapp.')
+    const { target } = message
+    if (target?.workspaceId) {
+      // From a recording link: the next capture goes to this workspace and folder.
+      await chrome.storage.session.set({ recordTarget: { ...target, expiresAt: Date.now() + 30 * 60_000 } })
+    }
     await openPanel(sender.tab)
     return true
   }

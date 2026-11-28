@@ -119,6 +119,10 @@ async function showWorkspace() {
 
 async function showCapture() {
   show('capture')
+  const { recordTarget } = await chrome.storage.session.get('recordTarget')
+  const folder = recordTarget?.expiresAt > Date.now() && recordTarget.workspaceId === account.workspaceId ? recordTarget.folderName : null
+  $('target-note').hidden = !folder
+  $('target-note').textContent = folder ? `Saving to the “${folder}” folder` : ''
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   const { preferredTab } = await chrome.storage.session.get('preferredTab')
   if (preferredTab) {
@@ -142,6 +146,23 @@ function showRecording(state) {
   timer = setInterval(refresh, 250)
 }
 
+// A recording link opened the extension for a workspace. Switch to it, then keep the folder for the note below.
+async function applyRecordTarget() {
+  const { recordTarget } = await chrome.storage.session.get('recordTarget')
+  if (!recordTarget || recordTarget.expiresAt < Date.now()) return null
+  if (recordTarget.workspaceId !== account.workspaceId) {
+    try {
+      const result = await api(account, '/api/v1/session/workspace', { method: 'PUT', body: { workspaceId: recordTarget.workspaceId } })
+      await commit({ ...account, workspaceId: result.workspaceId })
+    } catch {
+      // Not a member of that workspace: ignore the link and stay where we are.
+      await chrome.storage.session.remove('recordTarget')
+      return null
+    }
+  }
+  return recordTarget
+}
+
 async function init() {
   account = await currentAccount()
   const [state, drafts] = await Promise.all([send('state'), draftIds()])
@@ -150,6 +171,7 @@ async function init() {
   if (state) return showRecording(state)
   if (!account?.origin) return show('connect')
   if (!account.token || Date.parse(account.expiresAt) <= Date.now()) return showLogin({ open: true })
+  await applyRecordTarget()
   if (!account.workspaceId) return showWorkspace()
   return showCapture()
 }
