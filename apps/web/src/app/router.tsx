@@ -38,10 +38,12 @@ const login = createRoute({
   getParentRoute: () => root,
   path: "/login",
   // ref=extension: the Zapp extension opened this page to sign in; ext and state come back to it.
-  validateSearch: (search: Record<string, unknown>): { ref?: string; ext?: string; state?: string } => ({
+  // next: a page to return to after signing in (only recording links use it).
+  validateSearch: (search: Record<string, unknown>): { ref?: string; ext?: string; state?: string; next?: string } => ({
     ref: typeof search.ref === "string" ? search.ref : undefined,
     ext: typeof search.ext === "string" ? search.ext : undefined,
     state: typeof search.state === "string" ? search.state : undefined,
+    next: typeof search.next === "string" && /^\/r\/[\w-]{1,128}$/.test(search.next) ? search.next : undefined,
   }),
   component: lazyRouteComponent(() => import("@/features/auth/page"), "AuthPage"),
 });
@@ -82,9 +84,41 @@ const invite = createRoute({
   component: lazyRouteComponent(() => import("@/features/workspaces/invite-page"), "InvitePage"),
 });
 
+const folders = createRoute({
+  getParentRoute: () => signedIn,
+  path: "/folders",
+  beforeLoad: () => {
+    if (!useSession.getState().session?.workspaceId) throw redirect({ to: "/workspaces" });
+  },
+  component: lazyRouteComponent(() => import("@/features/folders/page"), "FoldersPage"),
+});
+
+const recordingLinks = createRoute({
+  getParentRoute: () => signedIn,
+  path: "/recording-links",
+  beforeLoad: () => {
+    if (!useSession.getState().session?.workspaceId) throw redirect({ to: "/workspaces" });
+  },
+  component: lazyRouteComponent(() => import("@/features/recording-links/page"), "RecordingLinksPage"),
+});
+
+// A recording link. Signing in first is part of the flow, then it comes back here.
+const record = createRoute({
+  getParentRoute: () => root,
+  path: "/r/$token",
+  beforeLoad: ({ params }) => {
+    if (!isActive(useSession.getState().session)) throw redirect({ to: "/login", search: { next: `/r/${params.token}` } });
+  },
+  component: lazyRouteComponent(() => import("@/features/recording-links/record-page"), "RecordPage"),
+});
+
 const reports = createRoute({
   getParentRoute: () => signedIn,
   path: "/reports",
+  // folder: show only the Zapps in this folder.
+  validateSearch: (search: Record<string, unknown>): { folder?: string } => ({
+    folder: typeof search.folder === "string" && search.folder ? search.folder : undefined,
+  }),
   beforeLoad: () => {
     if (!useSession.getState().session?.workspaceId) throw redirect({ to: "/workspaces" });
   },
@@ -99,7 +133,7 @@ const share = createRoute({
 });
 
 export const router = createRouter({
-  routeTree: root.addChildren([index, login, invite, signedIn.addChildren([workspaces, workspaceSettings, settings, reports]), share]),
+  routeTree: root.addChildren([index, login, invite, record, signedIn.addChildren([workspaces, workspaceSettings, settings, reports, folders, recordingLinks]), share]),
   defaultPreload: "intent",
   // Shown while a lazily loaded page is still being fetched.
   defaultPendingComponent: () => <div className="p-4 sm:p-6 lg:p-8"><SectionSkeleton label="Loading the page" /></div>,

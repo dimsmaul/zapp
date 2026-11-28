@@ -271,7 +271,7 @@ export function Comments({ reportId, token, workspaceId, video, isVideo, onSeek 
             />
             <div className="flex items-center justify-between gap-2 px-2 pb-2">
               <span className="px-1 text-xs text-muted-foreground">{isVideo ? "Times like 1:22 link to that moment" : ""}</span>
-              <Button type="button" size="sm" disabled={!text.trim() || add.isPending} onClick={submit}>
+              <Button type="button" size="icon" disabled={!text.trim() || add.isPending} onClick={submit}>
                 <Send />
               </Button>
             </div>

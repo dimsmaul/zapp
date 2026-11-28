@@ -25,7 +25,9 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: "zapp.session",
-      storage: createJSONStorage(() => sessionStorage),
+      // localStorage, not sessionStorage: every tab shares the sign-in, so the page the extension opens
+      // is already signed in when you are signed in anywhere else on this site.
+      storage: createJSONStorage(() => localStorage),
       partialize: ({ session }) => ({ session }),
     },
   ),

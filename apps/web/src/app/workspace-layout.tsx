@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDown, FolderPlus, Link2, LogOut, Moon, Plus, Settings, SlidersHorizontal, Video } from "lucide-react";
+import { ChevronsUpDown, Folder, Link2, LogOut, Moon, Plus, Settings, SlidersHorizontal, Video } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -149,13 +149,13 @@ function WorkspaceNavigation() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton disabled tooltip="Recording links (coming soon)">
-                  <Link2 /><span className={`${label} flex-1`}>Recording links</span><span className={`${label} text-xs text-muted-foreground`}>Soon</span>
+                <SidebarMenuButton asChild isActive={pathname === "/recording-links"} tooltip="Recording links">
+                  <Link to="/recording-links" onClick={() => setOpenMobile(false)}><Link2 /><span className={label}>Recording links</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton disabled tooltip="Create folder (coming soon)">
-                  <FolderPlus /><span className={`${label} flex-1`}>Create folder</span><span className={`${label} text-xs text-muted-foreground`}>Soon</span>
+                <SidebarMenuButton asChild isActive={pathname === "/folders"} tooltip="Folders">
+                  <Link to="/folders" onClick={() => setOpenMobile(false)}><Folder /><span className={label}>Folders</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

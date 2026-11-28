@@ -11,6 +11,8 @@ export type ReportSummary = {
   attachmentType: "video" | "screenshot";
   debuggerStatus: DebuggerStatus;
   createdAt: string;
+  /** The folder the report is in, if any. */
+  folderId: string | null;
   /** Short-lived signed media URL for list thumbnails; null when storage is not configured. */
   previewUrl: string | null;
   /** True when the caller may change this report (owner, admin, or the reporter). */
@@ -47,8 +49,20 @@ function pageSearch(cursor: string | null) {
   return params.toString();
 }
 
-export function listReports(token: string, cursor: string | null, signal: AbortSignal) {
-  return request<Page<ReportSummary>>(`/reports?${pageSearch(cursor)}`, { token, signal });
+export function listReports(token: string, cursor: string | null, signal: AbortSignal, folder?: string) {
+  const search = new URLSearchParams(pageSearch(cursor));
+  if (folder) search.set("folder", folder);
+  return request<Page<ReportSummary>>(`/reports?${search}`, { token, signal });
+}
+
+/** Deletes a report and its recording. This cannot be undone. */
+export function deleteReport(token: string, id: string) {
+  return request<void>(`/reports/${encodeURIComponent(id)}`, { method: "DELETE", token });
+}
+
+/** Moves a report into a folder, or out of its folder when `folderId` is null. */
+export function moveToFolder(token: string, id: string, folderId: string | null) {
+  return request<ReportSummary>(`/reports/${encodeURIComponent(id)}/folder`, { method: "PUT", token, body: { folderId } });
 }
 
 export function getReport(id: string, access: ReportAccess, signal: AbortSignal) {

@@ -1,10 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, getRouteApi, useLocation } from "@tanstack/react-router";
-import { Check, ChevronDown, Home, LayoutGrid, Link2, LocateFixed, Search, Settings } from "lucide-react";
+import { Link, getRouteApi, useLocation, useNavigate } from "@tanstack/react-router";
+import { Check, ChevronDown, Home, LayoutGrid, Link2, LocateFixed, Search, Settings, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { EventRowsSkeleton, ReportPageSkeleton } from "@/components/skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isActive, useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api";
-import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, getNetworkRequest, getReport, listEvents, updateDetails, updateVisibility } from "./api";
+import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, deleteReport, getNetworkRequest, getReport, listEvents, updateDetails, updateVisibility } from "./api";
 import { type EventRow, EventTable } from "./event-table";
 import { Comments, commentTimes, useComments } from "./comments";
 import { NetworkInspector } from "./network-inspector";
@@ -159,7 +160,17 @@ export function SharePage() {
   const [playbackMs, setPlaybackMs] = useState(0);
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const removeReport = useMutation({
+    mutationFn: () => deleteReport(token!, id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["reports"] });
+      await queryClient.invalidateQueries({ queryKey: ["folders"] });
+      await navigate({ to: "/reports" });
+    },
+  });
   const saveDetails = useMutation({
     mutationFn: (changes: { title: string; description: string }) => updateDetails(token!, id, changes),
     onSuccess: async (result) => {
@@ -347,6 +358,7 @@ export function SharePage() {
                   </DropdownMenuRadioGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => setSharing(true)}><Settings />Share settings</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmingDelete(true)}><Trash2 />Delete</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               </>
@@ -478,6 +490,19 @@ export function SharePage() {
           )}
         </aside>
     </main>
+    <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete “{title || "Untitled report"}”?</DialogTitle>
+          <DialogDescription>The recording, its console and network logs, and its comments are deleted for everyone. This cannot be undone.</DialogDescription>
+        </DialogHeader>
+        {removeReport.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(removeReport.error)}</AlertDescription></Alert>}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirmingDelete(false)}>Cancel</Button>
+          <Button variant="destructive" disabled={removeReport.isPending} onClick={() => removeReport.mutate()}>Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     {canManage && token && workspaceId && (
       <ShareDialog
         open={sharing}

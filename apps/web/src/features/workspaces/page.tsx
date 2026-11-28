@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,11 @@ export function WorkspacesPage() {
       select.mutate(workspace.id);
     },
   });
+  // No workspace chosen yet (an older session, or just after accepting an invite): start in the first one.
+  const first = workspaces.data?.items[0]?.id;
+  useEffect(() => {
+    if (!session?.workspaceId && first && select.isIdle && create.isIdle) select.mutate(first);
+  }, [session?.workspaceId, first, select, create.isIdle]);
   const error = select.error ?? create.error ?? workspaces.error;
   const pending = create.isPending || select.isPending;
   const signInAgain = error instanceof ApiError && error.status === 401;

@@ -1,26 +1,35 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { Camera, Play, Plus, Search, Video } from "lucide-react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearch } from "@tanstack/react-router";
+import { Camera, Play, Plus, Search, Trash2, Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ContextMenu, ContextMenuContent, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CardGridSkeleton } from "@/components/skeletons";
 import { useSession } from "@/features/auth/session";
+import { type Folder, listFolders } from "@/features/folders/api";
 import { errorMessage } from "@/lib/api";
 import { openExtension } from "@/lib/extension";
-import { type ReportSummary, type Visibility, listReports, updateVisibility } from "./api";
+import { type ReportSummary, type Visibility, deleteReport, listReports, moveToFolder, updateVisibility } from "./api";
 import { visibilityOption, visibilityOptions } from "./visibility";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /** A report card. Right-click it (when you may manage it) to change who can view it. */
-function ReportCard({ report, onVisibility }: { report: ReportSummary; onVisibility: (visibility: Visibility) => void }) {
+const NO_FOLDER = "none";
+
+function ReportCard({ report, folders, onVisibility, onMove, onDelete }: {
+  report: ReportSummary;
+  folders: Folder[];
+  onVisibility: (visibility: Visibility) => void;
+  onMove: (folderId: string | null) => void;
+  onDelete: () => void;
+}) {
   const card = (
     <Link to="/s/$id" params={{ id: report.id }} className="group grid gap-2 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Thumbnail report={report} />
@@ -44,6 +53,17 @@ function ReportCard({ report, onVisibility }: { report: ReportSummary; onVisibil
             <ContextMenuRadioItem key={value} value={value}><Icon />{label}</ContextMenuRadioItem>
           ))}
         </ContextMenuRadioGroup>
+        {folders.length > 0 && (
+          <>
+            <ContextMenuLabel>Folder</ContextMenuLabel>
+            <ContextMenuRadioGroup value={report.folderId ?? NO_FOLDER} onValueChange={(value) => onMove(value === NO_FOLDER ? null : value)}>
+              <ContextMenuRadioItem value={NO_FOLDER}>No folder</ContextMenuRadioItem>
+              {folders.map((folder) => <ContextMenuRadioItem key={folder.id} value={folder.id}>{folder.name}</ContextMenuRadioItem>)}
+            </ContextMenuRadioGroup>
+          </>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}><Trash2 />Delete</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -105,9 +125,18 @@ export function ReportsPage() {
   const [access, setAccess] = useState("all");
   const token = useSession((state) => state.session?.token ?? "");
   const workspaceId = useSession((state) => state.session?.workspaceId);
+  const { folder } = useSearch({ from: "/signed-in/reports" });
+  const folders = useQuery({
+    queryKey: ["folders", token, workspaceId],
+    queryFn: ({ signal }) => listFolders(token, signal),
+    enabled: Boolean(token && workspaceId),
+    retry: false,
+  });
+  const folderList = folders.data?.items ?? [];
+  const currentFolder = folderList.find((item) => item.id === folder);
   const reports = useInfiniteQuery({
-    queryKey: ["reports", token, workspaceId],
-    queryFn: ({ pageParam, signal }) => listReports(token, pageParam, signal),
+    queryKey: ["reports", token, workspaceId, folder],
+    queryFn: ({ pageParam, signal }) => listReports(token, pageParam, signal, folder),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.nextCursor,
     enabled: Boolean(token && workspaceId),
@@ -117,6 +146,22 @@ export function ReportsPage() {
   const changeVisibility = useMutation({
     mutationFn: ({ id, visibility }: { id: string; visibility: Visibility }) => updateVisibility(token, id, visibility),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports", token, workspaceId] }),
+  });
+  const [deleting, setDeleting] = useState<ReportSummary | null>(null);
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteReport(token, id),
+    onSuccess: async () => {
+      setDeleting(null);
+      await queryClient.invalidateQueries({ queryKey: ["reports", token, workspaceId] });
+      await queryClient.invalidateQueries({ queryKey: ["folders", token, workspaceId] });
+    },
+  });
+  const move = useMutation({
+    mutationFn: ({ id, folderId }: { id: string; folderId: string | null }) => moveToFolder(token, id, folderId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["reports", token, workspaceId] });
+      await queryClient.invalidateQueries({ queryKey: ["folders", token, workspaceId] });
+    },
   });
   const items = reports.data?.pages.flatMap((page) => page.items) ?? [];
   const term = search.trim().toLowerCase();
@@ -129,14 +174,26 @@ export function ReportsPage() {
   return (
     <section className="w-full">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b py-3 pl-14 pr-4 sm:pl-16 sm:pr-6">
-        <h1 className="text-2xl font-semibold">All Zapp</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          {folder ? (
+            <>
+              <Link to="/folders" className="text-muted-foreground hover:underline">Folders</Link>
+              <span aria-hidden="true" className="text-muted-foreground">/</span>
+              {currentFolder?.name ?? "Folder"}
+            </>
+          ) : "All Zapp"}
+        </h1>
         <Button onClick={() => void openExtension().then((opened) => { if (!opened) setCapture("choose"); })}><Plus />New Zapp</Button>
       </header>
       <div className="grid gap-5 p-4 sm:p-6 lg:px-10 lg:py-8">
         {reports.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(reports.error)}</AlertDescription></Alert>}
         {changeVisibility.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(changeVisibility.error)}</AlertDescription></Alert>}
+        {(move.isError || remove.isError) && <Alert variant="destructive"><AlertDescription>{errorMessage(move.error ?? remove.error)}</AlertDescription></Alert>}
         {reports.isPending && <CardGridSkeleton label="Loading Zapps" />}
-        {reports.isSuccess && items.length === 0 && (
+        {reports.isSuccess && items.length === 0 && folder && (
+          <p className="py-10 text-center text-sm text-muted-foreground">No Zapps in this folder yet. Right-click a Zapp on All Zapp to move it here.</p>
+        )}
+        {reports.isSuccess && items.length === 0 && !folder && (
           <div className="grid max-w-4xl gap-4 sm:grid-cols-2">
             <Card>
               <CardHeader><CardTitle>Record a tab</CardTitle><CardDescription>Capture video with console and network activity.</CardDescription></CardHeader>
@@ -186,7 +243,12 @@ export function ReportsPage() {
               <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {visible.map((report) => (
                   <li key={report.id}>
-                    <ReportCard report={report} onVisibility={(visibility) => changeVisibility.mutate({ id: report.id, visibility })} />
+                    <ReportCard
+                      report={report} folders={folderList}
+                      onVisibility={(visibility) => changeVisibility.mutate({ id: report.id, visibility })}
+                      onMove={(folderId) => move.mutate({ id: report.id, folderId })}
+                      onDelete={() => setDeleting(report)}
+                    />
                   </li>
                 ))}
               </ul>
@@ -199,6 +261,18 @@ export function ReportsPage() {
           </div>
         )}
       </div>
+      <Dialog open={deleting !== null} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete “{deleting?.title || "Untitled"}”?</DialogTitle>
+            <DialogDescription>The recording, its console and network logs, and its comments are deleted for everyone. This cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={remove.isPending} onClick={() => deleting && remove.mutate(deleting.id)}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={capture !== null} onOpenChange={(open) => { if (!open) setCapture(null); }}>
         <DialogContent>
           <DialogHeader>
