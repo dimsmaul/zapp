@@ -4,7 +4,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode, header},
-    routing::{get, delete, post},
+    routing::{get, delete, post, put},
 };
 use futures_util::FutureExt;
 use mongodb::{
@@ -23,6 +23,7 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/reports", get(management::list))
         .route("/api/v1/reports/{id}", get(read_report).patch(management::update).delete(management::remove))
+        .route("/api/v1/reports/{id}/folder", put(management::move_to_folder))
         .route("/api/v1/reports/{id}/access", get(management::access).post(management::share_with))
         .route("/api/v1/reports/{id}/access/{user_id}", delete(management::unshare))
         .route("/api/v1/reports/{id}/share-links", post(management::create_link))

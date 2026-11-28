@@ -101,8 +101,14 @@ impl CaptureService<'_> {
                 visibility,
                 title: input.title,
                 description: input.description,
+                folder_id: input.folder_id,
             },
         };
+        if let Some(folder) = draft.details.folder_id.as_deref() {
+            if !crate::feature::folders::exists(self.repository.0, owner.workspace_id, folder).await.map_err(|_| CaptureError::DatabaseUnavailable)? {
+                return Err(CaptureError::InvalidUpload);
+            }
+        }
         let expires_at = self.repository.save_draft(&owner, &token, &draft, now).await?;
         let duration = upload_url_lifetime(now_ms(), expires_at);
         if duration.is_zero() {

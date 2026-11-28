@@ -4,7 +4,7 @@ mod repository;
 use axum::{Router, routing::{delete, get, patch, post, put}};
 use crate::adapter::http::AppState;
 
-pub(crate) use repository::{active_workspace, membership};
+pub(crate) use repository::{active_workspace, default_workspace, membership};
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()

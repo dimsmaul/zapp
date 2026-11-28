@@ -15,10 +15,12 @@ pub(super) async fn user_by_email(db: &Database, email: &str) -> Result<Option<D
     Ok(db.collection::<Document>("users").find_one(doc! { "email": email }).await?)
 }
 
-pub(super) async fn begin_session(db: &Database, user_id: &str, token: &str, expires_at: DateTime) -> Result<(), ApiError> {
-    db.collection::<Document>("user_sessions").insert_one(doc! {
-        "_id": credential_hash(token), "userId": user_id, "expiresAt": expires_at,
-    }).await?;
+pub(super) async fn begin_session(db: &Database, user_id: &str, token: &str, expires_at: DateTime, workspace: Option<&str>) -> Result<(), ApiError> {
+    let mut session = doc! { "_id": credential_hash(token), "userId": user_id, "expiresAt": expires_at };
+    if let Some(workspace) = workspace {
+        session.insert("activeWorkspaceId", workspace);
+    }
+    db.collection::<Document>("user_sessions").insert_one(session).await?;
     Ok(())
 }
 

@@ -12,6 +12,7 @@ pub(super) struct UploadInput {
     pub title: Option<String>,
     pub description: Option<String>,
     pub visibility: Option<String>,
+    pub folder_id: Option<String>,
 }
 
 #[derive(Deserialize)]

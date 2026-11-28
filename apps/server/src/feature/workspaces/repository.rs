@@ -48,6 +48,12 @@ pub(super) async fn select(db: &Database, session: &Session, workspace: &str) ->
     Ok(())
 }
 
+/// The workspace a new session starts in: the first one in the user's list, so nobody has to pick one
+/// after signing in. None when the user has no workspace yet.
+pub(crate) async fn default_workspace(db: &Database, user: &str) -> Result<Option<String>, ApiError> {
+    Ok(list(db, user).await?.first().and_then(|workspace| workspace.get_str("id").ok().map(str::to_owned)))
+}
+
 pub(super) async fn list(db: &Database, user: &str) -> Result<Vec<Document>, ApiError> {
     let workspaces = db.collection::<Document>("workspace_members").aggregate(vec![
         doc! { "$match": { "userId": user } },

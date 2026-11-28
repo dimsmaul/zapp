@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
 use super::{model::{Credentials, normalize_email}, repository};
-use crate::{adapter::http::ApiError, feature::capture::new_secret};
+use crate::{adapter::http::ApiError, feature::{capture::new_secret, workspaces::default_workspace}};
 
 pub(super) const TOO_MANY_ATTEMPTS: ApiError = ApiError(
     StatusCode::TOO_MANY_REQUESTS, "TOO_MANY_ATTEMPTS", "Try again later.",
@@ -53,9 +53,10 @@ pub(super) async fn identify(db: &Database, input: Credentials, register: bool) 
     };
     let token = new_secret("zs_").map_err(|_| ApiError::INTERNAL)?;
     let expires_at = DateTime::from_millis(DateTime::now().timestamp_millis() + 86_400_000);
-    repository::begin_session(db, &user_id, &token, expires_at).await?;
+    let workspace = default_workspace(db, &user_id).await?;
+    repository::begin_session(db, &user_id, &token, expires_at, workspace.as_deref()).await?;
     Ok(json!({ "token": token, "expiresAt": expires_at.try_to_rfc3339_string().map_err(|_| ApiError::INTERNAL)?,
-        "user": { "id": user_id, "email": email }, "workspaceId": null }))
+        "user": { "id": user_id, "email": email }, "workspaceId": workspace }))
 }
 
 /// Gives the signed-in user a second, independent session, so the browser extension can sign in through the
@@ -64,9 +65,14 @@ pub(super) async fn derive_session(db: &Database, session: &super::model::Sessio
     let email = repository::user_email(db, &session.user_id).await?;
     let token = new_secret("zs_").map_err(|_| ApiError::INTERNAL)?;
     let expires_at = DateTime::from_millis(DateTime::now().timestamp_millis() + 86_400_000);
-    repository::begin_session(db, &session.user_id, &token, expires_at).await?;
+    // Keep the workspace the website is on, otherwise start in the first one.
+    let workspace = match session.workspace_id.clone() {
+        Some(workspace) => Some(workspace),
+        None => default_workspace(db, &session.user_id).await?,
+    };
+    repository::begin_session(db, &session.user_id, &token, expires_at, workspace.as_deref()).await?;
     Ok(json!({ "token": token, "expiresAt": expires_at.try_to_rfc3339_string().map_err(|_| ApiError::INTERNAL)?,
-        "user": { "id": session.user_id, "email": email }, "workspaceId": null }))
+        "user": { "id": session.user_id, "email": email }, "workspaceId": workspace }))
 }
 
 fn hash_password(password: &str) -> Result<String, ApiError> {

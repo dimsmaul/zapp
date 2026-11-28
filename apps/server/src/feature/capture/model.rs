@@ -44,6 +44,7 @@ pub(super) struct DraftDetails {
     pub visibility: String,
     pub title: Option<String>,
     pub description: Option<String>,
+    pub folder_id: Option<String>,
 }
 
 pub(super) struct Draft {

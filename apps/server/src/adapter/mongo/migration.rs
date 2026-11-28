@@ -6,7 +6,7 @@ use mongodb::{
 };
 use std::time::Duration;
 
-pub const SCHEMA_VERSION: &str = "003_comments";
+pub const SCHEMA_VERSION: &str = "004_folders";
 
 pub(crate) async fn is_ready(db: &Database) -> Result<bool> {
     Ok(db
@@ -200,6 +200,16 @@ pub async fn migrate(db: &Database) -> Result<()> {
     ]).await?;
     db.collection::<Document>("report_comments")
         .create_index(index("report_comments_timeline", doc! { "reportId": 1, "createdAt": 1, "_id": 1 }, false))
+        .await?;
+    record_migration(db, "003_comments").await?;
+
+    create_collection(db, "folders", &[("workspaceId", "string"), ("name", "string"), ("createdAt", "date")]).await?;
+    db.collection::<Document>("folders")
+        .create_index(index("folders_by_workspace", doc! { "workspaceId": 1, "name": 1 }, false))
+        .await?;
+    create_collection(db, "recording_links", &[("workspaceId", "string"), ("token", "string"), ("createdAt", "date")]).await?;
+    db.collection::<Document>("recording_links")
+        .create_index(index("recording_links_token", doc! { "token": 1 }, true))
         .await?;
     record_migration(db, SCHEMA_VERSION).await
 }

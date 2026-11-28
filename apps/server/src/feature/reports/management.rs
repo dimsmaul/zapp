@@ -6,11 +6,15 @@ use serde_json::{Value, json};
 
 use crate::{
     adapter::http::{ApiError, AppState},
-    feature::{auth::Session, capture::{credential_hash, new_secret}, workspaces::{active_workspace, membership}},
+    feature::{auth::Session, capture::{credential_hash, new_secret}, folders, workspaces::{active_workspace, membership}},
 };
 
 #[derive(Deserialize)]
-pub(super) struct Page { limit: Option<u32>, cursor: Option<String> }
+pub(super) struct Page { limit: Option<u32>, cursor: Option<String>, folder: Option<String> }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FolderInput { folder_id: Option<String> }
 
 #[derive(Deserialize)]
 pub(super) struct Update { title: Option<String>, description: Option<String>, visibility: Option<String> }
@@ -25,6 +29,9 @@ pub(super) async fn list(State(state): State<AppState>, session: Session, Query(
     let admin = matches!(membership(&state.db, user, workspace).await?.as_deref(), Some("owner" | "admin"));
     let limit = i64::from(page.limit.unwrap_or(30).clamp(1, 100));
     let mut filter = doc! { "workspaceId": workspace, "deletedAt": null };
+    if let Some(folder) = page.folder.as_deref().filter(|folder| !folder.is_empty() && folder.len() <= 64) {
+        filter.insert("folderId", folder);
+    }
     if let Some(cursor) = page.cursor.as_deref() {
         let (time, id) = cursor.split_once(':').ok_or(ApiError::invalid("Invalid report cursor."))?;
         let time = DateTime::from_millis(time.parse().map_err(|_| ApiError::invalid("Invalid report cursor."))?);
@@ -83,6 +90,22 @@ pub(super) async fn update(State(state): State<AppState>, session: Session, Path
     if fields.is_empty() { return Err(ApiError::invalid("Provide at least one report field.")); }
     fields.insert("updatedAt", DateTime::now());
     let updated = state.db.collection::<Document>("reports").find_one_and_update(filter, doc! { "$set": fields })
+        .return_document(ReturnDocument::After).await?.ok_or(ApiError::NOT_FOUND)?;
+    Ok(Json(summary(&updated)))
+}
+
+/// Moves a report into a folder of its workspace, or out of any folder when `folderId` is null.
+pub(super) async fn move_to_folder(State(state): State<AppState>, session: Session, Path(id): Path<String>, Json(input): Json<FolderInput>) -> Result<Json<Value>, ApiError> {
+    let filter = manage_filter(&state.db, &session, &id).await?;
+    let workspace = filter.get_str("workspaceId").map_err(|_| ApiError::NOT_FOUND)?;
+    let change = match input.folder_id.as_deref() {
+        Some(folder) => {
+            if !folders::exists(&state.db, workspace, folder).await? { return Err(ApiError::invalid("That folder does not exist.")); }
+            doc! { "$set": { "folderId": folder, "updatedAt": DateTime::now() } }
+        }
+        None => doc! { "$unset": { "folderId": "" }, "$set": { "updatedAt": DateTime::now() } },
+    };
+    let updated = state.db.collection::<Document>("reports").find_one_and_update(filter, change)
         .return_document(ReturnDocument::After).await?.ok_or(ApiError::NOT_FOUND)?;
     Ok(Json(summary(&updated)))
 }
@@ -231,6 +254,7 @@ fn summary(report: &Document) -> Value {
         "id": report.get_str("_id").ok(), "title": report.get_str("title").ok(),
         "description": report.get_str("description").ok(), "visibility": report.get_str("visibility").ok(),
         "attachmentType": report.get_str("attachmentType").ok(), "debuggerStatus": report.get_str("debuggerStatus").ok(),
+        "folderId": report.get_str("folderId").ok(),
         "createdAt": report.get_datetime("createdAt").ok().and_then(|date| date.try_to_rfc3339_string().ok()),
     })
 }
