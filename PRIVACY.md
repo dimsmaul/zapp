@@ -16,7 +16,8 @@ Only when you start a capture (screenshot or recording) on a tab:
 - **Console output** of that tab (logs, warnings, errors).
 - **Network activity** of that tab: request URLs, methods, status codes, timings and headers/bodies where available. Values that look like credentials (authorization, cookie, password, token, secret, API key) are redacted before upload.
 - **Page details**: the address of the page you captured (origin and path only, without the query string or fragment, which can hold tokens) and the page title.
-- **Device details**, shown on the report's Info tab: your operating system and its version and architecture, your browser and its version, the size of the browser window, your time zone, and your browser language. The extension reads these from the browser. It does not look up your location from your IP address.
+- **Device details**, shown on the report's Info tab: your operating system and its version and architecture, your browser and its version, the size of the browser window, your time zone, and your browser language. The extension reads these from the browser.
+- **Time and country**, shown on the Info tab: when the capture started in UTC, how far your device's clock is from UTC, and a **country estimated from your device's time zone setting** (for example "Asia/Jakarta" gives "Indonesia"). This is worked out inside the extension from the browser's own data. Nothing looks up your IP address or your physical location, and no other service is contacted. Because it follows the time zone setting, it can differ from where you actually are.
 - **Your actions** on the page during the recording (for example clicks and navigation), used to build the report timeline.
 
 The extension does not capture anything in the background. Nothing is collected unless you start a capture, and capture is limited to the tab you choose.

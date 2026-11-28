@@ -102,6 +102,27 @@ async function activeTab() {
 // Brands in the order we would rather name the browser: Chromium browsers also list "Chromium" and "Google Chrome".
 const BROWSERS = ['Brave', 'Microsoft Edge', 'Opera', 'Vivaldi', 'Arc', 'Google Chrome', 'Chromium']
 
+// The country whose time zone list contains this zone, from the browser's own data (no IP lookup, no network).
+// It is the country of the time zone the device is set to, so it can differ from where the person is. Zones that
+// belong to no country (UTC) give nothing.
+function countryOfTimeZone(timeZone) {
+  for (let first = 65; first <= 90; first++) {
+    for (let second = 65; second <= 90; second++) {
+      const code = String.fromCharCode(first, second)
+      let zones
+      try {
+        const locale = new Intl.Locale('und', { region: code })
+        zones = typeof locale.getTimeZones === 'function' ? locale.getTimeZones() : locale.timeZones
+      } catch {
+        continue // not a real region code
+      }
+      if (zones?.includes(timeZone)) {
+        return { countryCode: code, country: new Intl.DisplayNames(['en'], { type: 'region' }).of(code) }
+      }
+    }
+  }
+}
+
 // Where and on what this capture is made, for the report's Info tab. The page URL drops its query and fragment,
 // which can carry tokens.
 async function environmentOf(tab) {
@@ -122,11 +143,15 @@ async function environmentOf(tab) {
     url = undefined
   }
   const text = (value, max) => (typeof value === 'string' && value ? value.slice(0, max) : undefined)
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const now = new Date()
   const environment = {
+    // When the capture started in UTC, and how far this device's clock is from UTC, so the report can show both.
+    capturedAt: now.toISOString(), utcOffsetMinutes: -now.getTimezoneOffset(), ...countryOfTimeZone(timezone),
     url, title: text(tab.title, 300), os: text(data?.platform, 80), osVersion: text(high.platformVersion, 80),
     architecture: text(high.architecture, 40), browser: brand?.brand, browserVersion: text(brand?.version, 80),
     windowWidth: tab.width > 0 ? Math.round(tab.width) : undefined, windowHeight: tab.height > 0 ? Math.round(tab.height) : undefined,
-    timezone: text(Intl.DateTimeFormat().resolvedOptions().timeZone, 80), language: text(navigator.language, 40),
+    timezone: text(timezone, 80), language: text(navigator.language, 40),
   }
   return Object.fromEntries(Object.entries(environment).filter(([, value]) => value !== undefined))
 }
