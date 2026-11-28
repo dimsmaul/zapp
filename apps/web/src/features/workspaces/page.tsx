@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Building2, Plus } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { type FormEvent, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -67,7 +68,7 @@ export function WorkspacesPage() {
         <CardHeader><CardTitle>Your workspaces</CardTitle><CardDescription>Choose a workspace to view its reports.</CardDescription></CardHeader>
         <CardContent>
           {workspaces.isPending && <ListSkeleton label="Loading workspaces" rows={2} avatar={false} />}
-          {workspaces.data?.items.length === 0 && <p>You haven’t joined a workspace yet.</p>}
+          {workspaces.data?.items.length === 0 && <EmptyState icon={Building2} title="No workspace yet" description="Create your first workspace below, or ask a teammate to invite you to theirs." />}
           <ul className="grid gap-3">
             {workspaces.data?.items.map((workspace) => (
               <li key={workspace.id} className="flex items-center justify-between gap-3">

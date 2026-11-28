@@ -16,6 +16,7 @@ import { ApiError, errorMessage } from "@/lib/api";
 import { type DebuggerStatus, type PlaybackReport, type TimelineEvent, type Visibility, deleteReport, getNetworkRequest, getReport, listEvents, updateDetails, updateVisibility } from "./api";
 import { type EventRow, EventTable } from "./event-table";
 import { Comments, commentTimes, useComments } from "./comments";
+import { InfoPanel } from "./info-panel";
 import { NetworkInspector } from "./network-inspector";
 import { ShareDialog } from "./share-dialog";
 import { visibilityOptions } from "./visibility";
@@ -147,7 +148,7 @@ export function SharePage() {
   const shareToken = new URLSearchParams(hash.replace(/^#/, "")).get("share") || undefined;
   const access = { token, shareToken };
   const accessKey = ["report", id, token, shareToken] as const;
-  const [view, setView] = useState<"console" | "network" | "action">("console");
+  const [view, setView] = useState<"console" | "network" | "action" | "info">("console");
   const eventView = view === "network" ? "network" : "events";
   const [selection, setSelection] = useState<{ reportId: string; requestId: string }>();
   const requestId = selection?.reportId === id ? selection.requestId : undefined;
@@ -315,7 +316,7 @@ export function SharePage() {
     );
   }
 
-  const { title, description, attachmentType, attachmentUrl, createdAt, reporter, visibility, canManage, workspaceId } = report.data;
+  const { title, description, attachmentType, attachmentUrl, createdAt, reporter, visibility, canManage, workspaceId, environment } = report.data;
 
   async function copyLink() {
     try {
@@ -409,16 +410,19 @@ export function SharePage() {
           </header>
           <div className="flex min-h-0 min-w-0 flex-col">
             <Tabs className="min-h-0 flex-1 gap-0" value={view} onValueChange={(value) => {
-              if (value === "console" || value === "network" || value === "action") setView(value);
+              if (value === "console" || value === "network" || value === "action" || value === "info") setView(value);
             }}>
               <div className="shrink-0 border-b px-4 pt-3 pb-2">
               <TabsList variant="line" aria-label="Debugger views" className="h-auto">
-                {(["console", "network", "action"] as const).map((tab) => (
+                {(["console", "network", "action", "info"] as const).map((tab) => (
                   <TabsTrigger key={tab} value={tab} className="flex-none rounded-md border-transparent px-3 py-1.5 capitalize">{tab}</TabsTrigger>
                 ))}
               </TabsList>
               </div>
               <TabsContent value={view} className="flex min-h-0 flex-1 flex-col">
+                {view === "info" ? (
+                  <div className="min-h-0 flex-1 overflow-auto max-lg:max-h-[70svh]"><InfoPanel environment={environment} createdAt={createdAt} /></div>
+                ) : (<>
                 <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2">
                   <div className="relative min-w-32 flex-1">
                     <Search size={16} aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
@@ -470,6 +474,7 @@ export function SharePage() {
                   {events.isFetchingNextPage && <EventRowsSkeleton label="Loading more events" rows={3} />}
                 </div>}
                 </div>
+                </>)}
               </TabsContent>
             </Tabs>
           </div>

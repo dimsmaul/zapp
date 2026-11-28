@@ -1,11 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
-import { Camera, Play, Plus, Search, Trash2, Video } from "lucide-react";
+import { Camera, FolderOpen, Play, Plus, Search, SearchX, Trash2, Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/empty-state";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -170,6 +170,8 @@ export function ReportsPage() {
     && (access === "all" || report.visibility === access)
     && (!term || (report.title ?? "Untitled").toLowerCase().includes(term)));
   const filtering = Boolean(term) || type !== "all" || access !== "all";
+  // Opens the extension; when it is not installed or not connected, show the how-to dialog instead.
+  const startNew = () => void openExtension().then((opened) => { if (!opened) setCapture("choose"); });
 
   return (
     <section className="w-full">
@@ -183,7 +185,7 @@ export function ReportsPage() {
             </>
           ) : "All Zapp"}
         </h1>
-        <Button onClick={() => void openExtension().then((opened) => { if (!opened) setCapture("choose"); })}><Plus />New Zapp</Button>
+        <Button onClick={startNew}><Plus />New Zapp</Button>
       </header>
       <div className="grid gap-5 p-4 sm:p-6 lg:px-10 lg:py-8">
         {reports.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(reports.error)}</AlertDescription></Alert>}
@@ -191,27 +193,14 @@ export function ReportsPage() {
         {(move.isError || remove.isError) && <Alert variant="destructive"><AlertDescription>{errorMessage(move.error ?? remove.error)}</AlertDescription></Alert>}
         {reports.isPending && <CardGridSkeleton label="Loading Zapps" />}
         {reports.isSuccess && items.length === 0 && folder && (
-          <p className="py-10 text-center text-sm text-muted-foreground">No Zapps in this folder yet. Right-click a Zapp on All Zapp to move it here.</p>
+          <EmptyState icon={FolderOpen} title="No Zapps in this folder yet" description="Right-click a Zapp on All Zapp and choose this folder to move it here.">
+            <Button variant="outline" asChild><Link to="/reports">Go to All Zapp</Link></Button>
+          </EmptyState>
         )}
         {reports.isSuccess && items.length === 0 && !folder && (
-          <div className="grid max-w-4xl gap-4 sm:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle>Record a tab</CardTitle><CardDescription>Capture video with console and network activity.</CardDescription></CardHeader>
-              <CardContent>
-                <div className="grid aspect-video place-items-center rounded-lg bg-accent">
-                  <Button size="icon-lg" variant="outline" aria-label="Start a tab recording" onClick={() => setCapture("video")}><Video /></Button>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle>Take a screenshot</CardTitle><CardDescription>Save what’s visible in the current tab.</CardDescription></CardHeader>
-              <CardContent>
-                <div className="grid aspect-video place-items-center rounded-lg bg-muted">
-                  <Button size="icon-lg" variant="outline" aria-label="Take a screenshot" onClick={() => setCapture("screenshot")}><Camera /></Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <EmptyState icon={Video} title="No Zapps yet" description="Record a tab or take a screenshot with the Zapp extension. It shows up here with its console and network activity.">
+            <Button onClick={startNew}><Plus />New Zapp</Button>
+          </EmptyState>
         )}
         {items.length > 0 && (
           <>
@@ -238,7 +227,9 @@ export function ReportsPage() {
               {filtering && <Button variant="ghost" onClick={() => { setSearch(""); setType("all"); setAccess("all"); }}>Clear</Button>}
             </div>
             {visible.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">No Zapp matches your filters{reports.hasNextPage ? " in the loaded items. Load more to search further." : "."}</p>
+              <EmptyState icon={SearchX} title="No Zapp matches your filters" description={reports.hasNextPage ? "Only the loaded Zapps were searched. Load more to search further." : "Try a different search or clear the filters."}>
+                <Button variant="outline" onClick={() => { setSearch(""); setType("all"); setAccess("all"); }}>Clear filters</Button>
+              </EmptyState>
             ) : (
               <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {visible.map((report) => (

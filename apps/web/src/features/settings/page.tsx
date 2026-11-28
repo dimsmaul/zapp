@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, KeyRound, Plus, Trash2, UserRound } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { type FormEvent, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { SettingsLayout, type SettingsSection } from "@/components/settings-layout";
@@ -173,7 +174,7 @@ export function SettingsPage() {
               <CardContent>
                 {tokens.isPending && <ListSkeleton label="Loading tokens" rows={2} avatar={false} />}
                 {tokens.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(tokens.error)}</AlertDescription></Alert>}
-                {tokens.isSuccess && tokens.data.items.length === 0 && <p className="text-sm text-muted-foreground">No tokens yet. Create one to connect an agent.</p>}
+                {tokens.isSuccess && tokens.data.items.length === 0 && <EmptyState icon={KeyRound} title="No tokens yet" description="Create a token to connect an AI agent to your Zapps through MCP." />}
                 <ul className="grid divide-y">
                   {tokens.data?.items.map((item) => (
                     <li key={item.id} className="flex items-center justify-between gap-3 py-3">

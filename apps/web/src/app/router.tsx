@@ -37,11 +37,10 @@ const index = createRoute({
 const login = createRoute({
   getParentRoute: () => root,
   path: "/login",
-  // ref=extension: the Zapp extension opened this page to sign in; ext and state come back to it.
+  // ref=extension: the Zapp extension opened this page to sign in; state comes back to it.
   // next: a page to return to after signing in (only recording links use it).
-  validateSearch: (search: Record<string, unknown>): { ref?: string; ext?: string; state?: string; next?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { ref?: string; state?: string; next?: string } => ({
     ref: typeof search.ref === "string" ? search.ref : undefined,
-    ext: typeof search.ext === "string" ? search.ext : undefined,
     state: typeof search.state === "string" ? search.state : undefined,
     next: typeof search.next === "string" && /^\/r\/[\w-]{1,128}$/.test(search.next) ? search.next : undefined,
   }),

@@ -21,7 +21,24 @@ export type ReportSummary = {
 
 export type Visibility = ReportSummary["visibility"];
 
+/** Where and on what a report was recorded. The URL and title are only sent to workspace members. */
+export type Environment = {
+  url?: string;
+  title?: string;
+  os?: string;
+  osVersion?: string;
+  architecture?: string;
+  browser?: string;
+  browserVersion?: string;
+  windowWidth?: number;
+  windowHeight?: number;
+  timezone?: string;
+  language?: string;
+};
+
 export type PlaybackReport = Pick<ReportSummary, "id" | "title" | "description" | "attachmentType" | "debuggerStatus" | "createdAt" | "visibility" | "canManage"> & {
+  /** Null for reports recorded before this was captured. */
+  environment: Environment | null;
   /** Reporter email; only sent to signed-in workspace members. */
   reporter: string | null;
   /** The report's workspace; only sent to signed-in workspace members. */

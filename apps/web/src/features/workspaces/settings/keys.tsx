@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { type FormEvent, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -76,7 +77,7 @@ export function KeysSection({ token, workspace }: Props) {
           )}
           {keys.isPending && <ListSkeleton label="Loading keys" rows={2} avatar={false} />}
           {keys.isError && <Alert variant="destructive"><AlertDescription>{errorMessage(keys.error)}</AlertDescription></Alert>}
-          {keys.isSuccess && keys.data.items.length === 0 && <p className="text-sm text-muted-foreground">No capture keys yet.</p>}
+          {keys.isSuccess && keys.data.items.length === 0 && <EmptyState icon={KeyRound} title="No capture keys yet" description="A capture key lets a website you own send reports to this workspace." />}
           <ul className="grid divide-y">
             {keys.data?.items.map((item) => (
               <li key={item.id} className="flex items-start justify-between gap-3 py-3">

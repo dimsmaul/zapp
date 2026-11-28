@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/api";
+import { signInExtension } from "@/lib/extension";
 import { authenticate, extensionSession } from "./api";
 import { isActive, useSession } from "./session";
 import { AuthShowcase } from "./showcase";
@@ -16,17 +17,14 @@ export function AuthPage() {
   const setSession = useSession((state) => state.setSession);
   const [mode, setMode] = useState<"login" | "register">("login");
   const registering = mode === "register";
-  const { ref, ext, state, next } = useSearch({ from: "/login" });
-  // Extension IDs are 32 letters a-p. Anything else is not an extension we should hand a session to.
-  const forExtension = ref === "extension" && /^[a-p]{32}$/.test(ext ?? "") && Boolean(state);
+  const { ref, state, next } = useSearch({ from: "/login" });
+  // The extension opened this page (ref=extension) with a one-off state that it checks when we hand the session back.
+  const forExtension = ref === "extension" && Boolean(state);
   const current = useSession((value) => value.session);
   const handoff = useMutation({
     mutationFn: async (token: string) => {
       const session = await extensionSession(token);
-      const hash = new URLSearchParams({
-        token: session.token, expiresAt: session.expiresAt, userId: session.user.id, state: state ?? "",
-      });
-      window.location.replace(`chrome-extension://${ext}/auth.html#${hash}`);
+      await signInExtension({ state: state ?? "", token: session.token, expiresAt: session.expiresAt, userId: session.user.id });
     },
   });
   const auth = useMutation({
@@ -74,6 +72,7 @@ export function AuthPage() {
             <FieldGroup>
               {(auth.isError || handoff.isError) && <Alert variant="destructive"><AlertDescription>{errorMessage(auth.error ?? handoff.error)}</AlertDescription></Alert>}
               {handoff.isPending && <Alert><AlertDescription>Connecting the extension…</AlertDescription></Alert>}
+              {handoff.isSuccess && <Alert><AlertDescription>The extension is connected. This tab will close.</AlertDescription></Alert>}
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input id="email" name="email" type="email" autoComplete="username" required />
